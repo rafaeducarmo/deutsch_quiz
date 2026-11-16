@@ -1,7 +1,9 @@
 // Pantalla principal del quiz.
-// Aquí solo hay interfaz y estado; las reglas de comparación viven en
-// quiz_logic.dart.
+// Aquí solo hay interfaz y estado; las reglas de comparación y la navegación
+// viven en quiz_logic.dart.
 
+// services.dart trae los tipos del teclado (LogicalKeyboardKey, KeyEvent...).
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'quiz_logic.dart';
@@ -27,11 +29,30 @@ class _QuizScreenState extends State<QuizScreen> {
   // en cada actualización de la pantalla (típico bug de "no puedo escribir").
   final FocusNode _focus = FocusNode();
 
-  // ---- TODO EL ESTADO DEL JUEGO está en estas 5 variables. ----
+  // Controlador del scroll de la cuadrícula: lo usamos para desplazarla
+  // sola hasta la palabra seleccionada.
+  final ScrollController _scroll = ScrollController();
+
+  /// Alto de cada fila de la cuadrícula (36 de celda + 2 de margen arriba y
+  /// abajo). Es FIJO, y por eso podemos calcular dónde está cada fila.
+  static const double _altoFila = 40;
+
+  /// Margen interior de la lista (arriba y abajo).
+  static const double _margenLista = 8;
+
+  // ---- TODO EL ESTADO DEL JUEGO está en estas variables. ----
   // _reiniciar() las restaura todas; por eso reiniciar funciona siempre.
 
-  /// Modo de juego actual.
+  /// Modo de idioma actual (DE → EN o EN → DE).
   QuizMode _modo = QuizMode.deToEn;
+
+  /// true = modo ORDENADO (hay una palabra seleccionada y solo se acepta
+  /// esa). false = modo LIBRE (se acepta cualquier palabra pendiente).
+  bool _ordenado = true;
+
+  /// Índice de la palabra seleccionada (solo se usa en modo ordenado).
+  /// null cuando no hay ninguna: modo libre, o ya están todas acertadas.
+  int? _seleccion = 0;
 
   /// Palabras acertadas: índice en `words` -> texto que se muestra en la celda.
   final Map<int, String> _acertadas = {};
@@ -51,10 +72,19 @@ class _QuizScreenState extends State<QuizScreen> {
   bool get _campoActivo => !_rendido && !_ganado;
 
   @override
+  void initState() {
+    super.initState();
+    // Interceptamos Tab y Shift+Tab ANTES de que el navegador los use para
+    // mover el foco a otro elemento de la página.
+    _focus.onKeyEvent = _alTecla;
+  }
+
+  @override
   void dispose() {
     // Siempre liberar los objetos que lo necesitan.
     _controller.dispose();
     _focus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -68,10 +98,122 @@ class _QuizScreenState extends State<QuizScreen> {
     });
   }
 
+  /// Teclas especiales del campo: Tab = siguiente, Shift+Tab = anterior.
+  /// Devolver "handled" significa "ya me ocupé yo": así el foco NO se va.
+  KeyEventResult _alTecla(FocusNode nodo, KeyEvent evento) {
+    if (evento.logicalKey != LogicalKeyboardKey.tab) {
+      return KeyEventResult.ignored;
+    }
+    // Solo actuamos al bajar la tecla (o al repetirse si se mantiene).
+    if (evento is! KeyUpEvent && _ordenado && _campoActivo) {
+      _mover(adelante: !HardwareKeyboard.instance.isShiftPressed);
+    }
+    // En modo libre, Tab no hace nada, pero tampoco debe sacar el foco.
+    return KeyEventResult.handled;
+  }
+
+  // -------------------------------------------------------------------------
+  // Selección (modo ordenado)
+  // -------------------------------------------------------------------------
+
+  /// Mueve la selección a la siguiente o anterior palabra pendiente.
+  void _mover({required bool adelante}) {
+    final actual = _seleccion;
+    if (actual == null) return;
+    final pendientes = _acertadas.keys.toSet();
+    _seleccionar(adelante
+        ? nextPending(actual, pendientes, words.length)
+        : previousPending(actual, pendientes, words.length));
+  }
+
+  /// Selecciona una palabra: vacía el campo, devuelve el foco y desplaza la
+  /// cuadrícula para que se vea.
+  void _seleccionar(int? indice) {
+    setState(() {
+      _seleccion = indice;
+      if (_mensajeEsError) {
+        _mensaje = '';
+        _mensajeEsError = false;
+      }
+    });
+    _controller.clear();
+    _devolverFoco();
+    _mostrarSeleccion();
+  }
+
+  /// Número de columnas según el ancho (misma regla que usa la cuadrícula).
+  int _columnasPara(double ancho) => ancho >= 1000 ? 4 : (ancho >= 600 ? 2 : 1);
+
+  /// Desplaza la lista SOLO si la fila seleccionada no está a la vista.
+  /// No usamos Scrollable.ensureVisible porque ListView.builder no crea las
+  /// filas que no se ven; en cambio, como todas miden lo mismo, la posición
+  /// de cada una se calcula con una multiplicación.
+  void _mostrarSeleccion() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final sel = _seleccion;
+      if (!mounted || sel == null || !_scroll.hasClients) return;
+
+      final columnas = _columnasPara(MediaQuery.sizeOf(context).width);
+      final fila = sel % gridRows(words.length, columnas);
+      final arriba = _margenLista + fila * _altoFila;
+      final abajo = arriba + _altoFila;
+      final pos = _scroll.position;
+
+      double? destino;
+      if (arriba < pos.pixels + _margenLista) {
+        destino = arriba - _margenLista; // está por encima: subir
+      } else if (abajo > pos.pixels + pos.viewportDimension - _margenLista) {
+        destino = abajo + _margenLista - pos.viewportDimension; // por debajo
+      }
+      if (destino != null) {
+        _scroll.animateTo(
+          destino.clamp(0.0, pos.maxScrollExtent),
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+        );
+      } else {
+        // Ya se ve: no hay que mover nada. Pero una animación anterior (p. ej.
+        // al pulsar Tab muy rápido) podría seguir en marcha y alejar la lista
+        // de la selección; jumpTo a la posición actual la cancela.
+        _scroll.jumpTo(pos.pixels);
+      }
+    });
+  }
+
+  /// Clic en una celda de la cuadrícula.
+  void _clicEnCelda(int indice) {
+    if (_ordenado && _campoActivo && !_acertadas.containsKey(indice)) {
+      _seleccionar(indice);
+    } else {
+      _devolverFoco(); // en cualquier otro caso, solo mantener el foco
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Responder
+  // -------------------------------------------------------------------------
+
+  /// Busca la coincidencia según el modo: en ordenado solo cuenta la palabra
+  /// seleccionada; en libre, cualquier pendiente.
+  MatchResult? _buscar(String texto, {required bool enviado}) {
+    if (_ordenado) {
+      final sel = _seleccion;
+      if (sel == null) return null;
+      return matchSelected(texto, words[sel], sel, _modo);
+    }
+    return findMatch(texto, words, _acertadas.keys.toSet(), _modo,
+        enviado: enviado);
+  }
+
   /// Marca una palabra como acertada y prepara el campo para la siguiente.
   void _marcar(MatchResult r) {
     setState(() {
       _acertadas[r.index] = r.answer;
+      // En modo ordenado la selección salta sola a la siguiente PENDIENTE
+      // (null si ya no queda ninguna: ganaste).
+      if (_ordenado) {
+        _seleccion = nextPending(r.index, _acertadas.keys.toSet(), words.length);
+      }
       _mensaje = _ganado
           ? '🎉 ¡Felicidades! Completaste las ${words.length} palabras'
           : '✔ ${promptFor(words[r.index], _modo)} = ${r.answer}';
@@ -79,11 +221,12 @@ class _QuizScreenState extends State<QuizScreen> {
     });
     _controller.clear(); // vaciar el campo (no dispara onChanged)
     _devolverFoco(); // y que el cursor siga ahí
+    if (_ordenado) _mostrarSeleccion();
   }
 
   /// Se llama en cada tecla. Marca sola la palabra si coincide sin ambigüedad.
   void _alCambiar(String texto) {
-    final r = findMatch(texto, words, _acertadas.keys.toSet(), _modo);
+    final r = _buscar(texto, enviado: false);
     if (r != null) {
       _marcar(r);
     } else if (_mensajeEsError) {
@@ -95,25 +238,31 @@ class _QuizScreenState extends State<QuizScreen> {
     }
   }
 
-  /// Se llama al presionar Enter: aquí sí se aceptan los casos ambiguos.
+  /// Se llama al presionar Enter: en modo libre aquí sí se aceptan los casos
+  /// ambiguos; en ambos modos, si no coincide, se muestra un aviso.
   void _alEnviar(String texto) {
     if (texto.trim().isEmpty) {
       _devolverFoco();
       return;
     }
-    final r = findMatch(texto, words, _acertadas.keys.toSet(), _modo,
-        enviado: true);
+    final r = _buscar(texto, enviado: true);
     if (r != null) {
       _marcar(r);
     } else {
       // No se vacía el campo: así el jugador puede corregir lo que escribió.
       setState(() {
-        _mensaje = 'No coincide con ninguna palabra pendiente';
+        _mensaje = _ordenado
+            ? 'No coincide con la palabra seleccionada'
+            : 'No coincide con ninguna palabra pendiente';
         _mensajeEsError = true;
       });
       _devolverFoco();
     }
   }
+
+  // -------------------------------------------------------------------------
+  // Botones y modos
+  // -------------------------------------------------------------------------
 
   /// "Me rindo": desactiva el campo y deja ver las respuestas que faltan.
   /// No borra nada: las acertadas se quedan como están.
@@ -136,17 +285,30 @@ class _QuizScreenState extends State<QuizScreen> {
       _rendido = false;
       _mensaje = '';
       _mensajeEsError = false;
+      _seleccion = _ordenado ? 0 : null; // vuelve a la palabra 1
     });
     _controller.clear();
     _devolverFoco(); // el campo ya estará activo cuando se pida el foco
+    if (_ordenado) _mostrarSeleccion(); // sube la cuadrícula al principio
   }
 
-  /// Cambiar de modo = poner el modo nuevo y reiniciar.
+  /// Cambiar de modo de idioma = poner el modo nuevo y reiniciar.
   void _cambiarModo(QuizMode nuevo) {
     if (nuevo == _modo) return;
     setState(() => _modo = nuevo);
     _reiniciar();
   }
+
+  /// Cambiar entre Ordenado y Libre = cambiar la opción y reiniciar.
+  void _cambiarOrden(bool ordenado) {
+    if (ordenado == _ordenado) return;
+    setState(() => _ordenado = ordenado);
+    _reiniciar();
+  }
+
+  // -------------------------------------------------------------------------
+  // Interfaz
+  // -------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -166,6 +328,17 @@ class _QuizScreenState extends State<QuizScreen> {
     final porcentaje = (aciertos * 100 / total).toStringAsFixed(0);
     final tema = Theme.of(context);
 
+    final String pista;
+    if (_ordenado) {
+      pista = _modo == QuizMode.deToEn
+          ? 'Escribe la traducción en inglés de la palabra resaltada…'
+          : 'Escribe en alemán la palabra resaltada…';
+    } else {
+      pista = _modo == QuizMode.deToEn
+          ? 'Escribe la traducción en inglés…'
+          : 'Escribe la palabra en alemán…';
+    }
+
     final campo = TextField(
       controller: _controller,
       focusNode: _focus,
@@ -182,22 +355,67 @@ class _QuizScreenState extends State<QuizScreen> {
       // quitarle el foco.
       onTapOutside: (_) {},
       decoration: InputDecoration(
-        hintText: _modo == QuizMode.deToEn
-            ? 'Escribe la traducción en inglés…'
-            : 'Escribe la palabra en alemán…',
+        hintText: pista,
         border: const OutlineInputBorder(),
         isDense: true,
       ),
     );
 
-    // Selector de modo + botones.
+    // Selectores, navegación y botones. Un Wrap pasa a una segunda línea
+    // solo si no caben todos en el ancho disponible.
     final controles = Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        _chipModo(QuizMode.deToEn, 'DE', 'EN', const Key('modo_de_en')),
-        _chipModo(QuizMode.enToDe, 'EN', 'DE', const Key('modo_en_de')),
+        _chip('DE', 'EN', const Key('modo_de_en'), _modo == QuizMode.deToEn,
+            () => _cambiarModo(QuizMode.deToEn)),
+        _chip('EN', 'DE', const Key('modo_en_de'), _modo == QuizMode.enToDe,
+            () => _cambiarModo(QuizMode.enToDe)),
+        const SizedBox(width: 4),
+        ChoiceChip(
+          key: const Key('orden_ordenado'),
+          label: const Text('Ordenado'),
+          selected: _ordenado,
+          showCheckmark: false,
+          onSelected: (_) => _cambiarOrden(true),
+        ),
+        ChoiceChip(
+          key: const Key('orden_libre'),
+          label: const Text('Libre'),
+          selected: !_ordenado,
+          showCheckmark: false,
+          onSelected: (_) => _cambiarOrden(false),
+        ),
+        if (_ordenado) ...[
+          const SizedBox(width: 4),
+          // Las flechas son Icon (no caracteres ← →): ver _chip.
+          OutlinedButton(
+            key: const Key('btn_anterior'),
+            onPressed: _campoActivo ? () => _mover(adelante: false) : null,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.arrow_back, size: 18),
+                SizedBox(width: 4),
+                Text('Anterior'),
+              ],
+            ),
+          ),
+          OutlinedButton(
+            key: const Key('btn_siguiente'),
+            onPressed: _campoActivo ? () => _mover(adelante: true) : null,
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Siguiente'),
+                SizedBox(width: 4),
+                Icon(Icons.arrow_forward, size: 18),
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(width: 4),
         FilledButton(
           onPressed: _campoActivo ? _rendirse : null, // null = desactivado
           child: const Text('Me rindo'),
@@ -232,28 +450,12 @@ class _QuizScreenState extends State<QuizScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              // Fila 2: el único campo de texto y los controles. En pantallas
-              // anchas van en la misma fila; en angostas, uno debajo del otro.
-              LayoutBuilder(
-                builder: (context, c) {
-                  if (c.maxWidth >= 800) {
-                    return Row(
-                      children: [
-                        Expanded(child: campo),
-                        const SizedBox(width: 12),
-                        controles,
-                      ],
-                    );
-                  }
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [campo, const SizedBox(height: 8), controles],
-                  );
-                },
-              ),
+              campo, // el único campo de texto
+              const SizedBox(height: 8),
+              controles,
               const SizedBox(height: 6),
-              // Fila 3: mensaje (último acierto, aviso o victoria). Altura
-              // fija para que la barra no "salte" al aparecer o desaparecer.
+              // Mensaje (último acierto, aviso o victoria). Altura fija para
+              // que la barra no "salte" al aparecer o desaparecer.
               SizedBox(
                 height: 20,
                 child: Text(
@@ -275,17 +477,17 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  /// Opción del selector de modo: un ChoiceChip que mide su propio contenido.
+  /// Opción del selector de idioma: un ChoiceChip que mide su propio contenido.
   /// La flecha es un Icon (un dibujo), no el carácter "→" dentro de un Text:
   /// ese carácter no está en la fuente por defecto del navegador y Chrome lo
-  /// dibuja con otra fuente de otro ancho, lo que recortaba la última letra
-  /// del botón. Un Icon mide siempre lo mismo.
-  Widget _chipModo(QuizMode modo, String origen, String destino, Key llave) {
+  /// dibuja con otra fuente de otro ancho, lo que recortaba la última letra.
+  Widget _chip(String origen, String destino, Key llave, bool seleccionado,
+      VoidCallback alElegir) {
     return ChoiceChip(
       key: llave,
-      selected: _modo == modo,
+      selected: seleccionado,
       showCheckmark: false,
-      onSelected: (_) => _cambiarModo(modo),
+      onSelected: (_) => alElegir(),
       label: Row(
         mainAxisSize: MainAxisSize.min, // el chip se ajusta a su contenido
         children: [
@@ -304,15 +506,18 @@ class _QuizScreenState extends State<QuizScreen> {
     // LayoutBuilder nos dice cuánto espacio hay, para elegir las columnas.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final ancho = constraints.maxWidth;
-        final columnas = ancho >= 1000 ? 4 : (ancho >= 600 ? 2 : 1);
+        final columnas = _columnasPara(constraints.maxWidth);
         final filas = gridRows(words.length, columnas);
 
         // ListView.builder solo construye las filas visibles (rápido).
         // Cada fila es un Row con una celda por columna; el índice de la
         // palabra sale de gridIndex para ordenar POR COLUMNAS.
+        // itemExtent fija el alto de todas las filas (necesario para poder
+        // calcular el scroll hacia la palabra seleccionada).
         return ListView.builder(
-          padding: const EdgeInsets.all(8),
+          controller: _scroll,
+          padding: const EdgeInsets.all(_margenLista),
+          itemExtent: _altoFila,
           itemCount: filas,
           itemBuilder: (context, fila) {
             return Row(
@@ -336,8 +541,10 @@ class _QuizScreenState extends State<QuizScreen> {
 
   /// Un par de celdas: pregunta (oscura) | respuesta (amarilla, verde o roja).
   Widget _fila(int? indice) {
-    if (indice == null) return const SizedBox(height: 40); // celda vacía
+    if (indice == null) return const SizedBox(height: _altoFila); // vacía
     final acertada = _acertadas.containsKey(indice);
+    final seleccionada = _ordenado && _campoActivo && _seleccion == indice;
+    final clicable = _ordenado && _campoActivo && !acertada;
 
     // Qué se escribe en la celda de respuesta y de qué color.
     final String textoRespuesta;
@@ -357,29 +564,50 @@ class _QuizScreenState extends State<QuizScreen> {
       colorTexto = Colors.black;
     }
 
+    final par = Container(
+      // Solo la fila seleccionada lleva esta llave (la usan los tests).
+      key: seleccionada ? const Key('seleccion') : null,
+      // foregroundDecoration se dibuja ENCIMA: así el borde grueso resalta
+      // la fila entera sin cambiar su tamaño.
+      foregroundDecoration: seleccionada
+          ? BoxDecoration(
+              border: Border.all(color: Colors.deepOrange, width: 3),
+              borderRadius: BorderRadius.circular(5),
+            )
+          : null,
+      child: Row(
+        children: [
+          Expanded(
+            child: _celda(
+              promptFor(words[indice], _modo),
+              fondo: seleccionada
+                  ? Colors.indigo.shade500
+                  : Colors.blueGrey.shade800,
+              colorTexto: Colors.white,
+              negrita: seleccionada,
+            ),
+          ),
+          const SizedBox(width: 2),
+          Expanded(
+            child: _celda(
+              textoRespuesta,
+              fondo: fondo,
+              colorTexto: colorTexto,
+              negrita: !acertada && _rendido,
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.all(2),
-      child: SizedBox(
-        height: 36,
-        child: Row(
-          children: [
-            Expanded(
-              child: _celda(
-                promptFor(words[indice], _modo),
-                fondo: Colors.blueGrey.shade800,
-                colorTexto: Colors.white,
-              ),
-            ),
-            const SizedBox(width: 2),
-            Expanded(
-              child: _celda(
-                textoRespuesta,
-                fondo: fondo,
-                colorTexto: colorTexto,
-                negrita: !acertada && _rendido,
-              ),
-            ),
-          ],
+      child: MouseRegion(
+        cursor: clicable ? SystemMouseCursors.click : MouseCursor.defer,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _clicEnCelda(indice),
+          child: par,
         ),
       ),
     );

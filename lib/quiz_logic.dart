@@ -108,6 +108,57 @@ int? gridIndex({
 }
 
 // ---------------------------------------------------------------------------
+// Navegación (modo ordenado)
+// ---------------------------------------------------------------------------
+// El orden de la cuadrícula es por columnas (ver gridIndex), así que "la
+// siguiente palabra" es simplemente el siguiente índice: 0, 1, 2 ... 199.
+
+/// Siguiente palabra PENDIENTE después de [actual], dando la vuelta al final
+/// (circular). Se salta las ya acertadas. Si [actual] es la única pendiente,
+/// devuelve [actual]. Devuelve null si no queda ninguna pendiente.
+/// [actual] puede ser -1 para "antes de la primera".
+int? nextPending(int actual, Set<int> acertadas, int total) {
+  for (var paso = 1; paso <= total; paso++) {
+    // El % de Dart con divisor positivo nunca da negativos, así que -1 funciona.
+    final i = (actual + paso) % total;
+    if (!acertadas.contains(i)) return i;
+  }
+  return null;
+}
+
+/// Palabra PENDIENTE anterior a [actual], circular (de la primera pasa a la
+/// última). Mismas reglas que [nextPending].
+int? previousPending(int actual, Set<int> acertadas, int total) {
+  for (var paso = 1; paso <= total; paso++) {
+    final i = (actual - paso) % total;
+    if (!acertadas.contains(i)) return i;
+  }
+  return null;
+}
+
+/// Primera palabra pendiente (null si ya están todas acertadas).
+int? firstPending(Set<int> acertadas, int total) =>
+    nextPending(-1, acertadas, total);
+
+/// Modo ordenado: compara lo escrito SOLO con una palabra concreta.
+/// Usa las mismas reglas de normalización que [findMatch]. No hay caso
+/// ambiguo: como solo se compara con la palabra seleccionada, "be" no puede
+/// ser el inicio de "become" y se acepta de inmediato.
+MatchResult? matchSelected(
+  String entrada,
+  Word palabra,
+  int indice,
+  QuizMode modo,
+) {
+  final texto = normalize(entrada, modo);
+  if (texto.isEmpty) return null;
+  for (final cruda in rawAnswers(palabra, modo)) {
+    if (normalize(cruda, modo) == texto) return MatchResult(indice, cruda);
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Coincidencias
 // ---------------------------------------------------------------------------
 

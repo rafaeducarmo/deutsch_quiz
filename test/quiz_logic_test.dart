@@ -253,6 +253,99 @@ void main() {
     });
   });
 
+  group('navegación nextPending / previousPending', () {
+    test('avanza al siguiente índice', () {
+      expect(nextPending(0, {}, 200), 1);
+      expect(nextPending(41, {}, 200), 42);
+    });
+
+    test('retrocede al índice anterior', () {
+      expect(previousPending(5, {}, 200), 4);
+    });
+
+    test('se salta las ya acertadas', () {
+      expect(nextPending(0, {1, 2}, 200), 3);
+      expect(previousPending(5, {4, 3}, 200), 2);
+    });
+
+    test('es circular: de la última pasa a la primera y al revés', () {
+      expect(nextPending(199, {}, 200), 0);
+      expect(previousPending(0, {}, 200), 199);
+    });
+
+    test('la vuelta también se salta las acertadas', () {
+      expect(nextPending(199, {0, 1}, 200), 2);
+      expect(previousPending(0, {199, 198}, 200), 197);
+    });
+
+    test('si solo queda una pendiente, devuelve esa misma', () {
+      final todasMenos7 = {for (var i = 0; i < 200; i++) if (i != 7) i};
+      expect(nextPending(7, todasMenos7, 200), 7);
+      expect(previousPending(7, todasMenos7, 200), 7);
+    });
+
+    test('desde una palabra ya acertada busca la pendiente más cercana', () {
+      // Justo después de acertar la 10 (ya en el conjunto) -> la 11.
+      expect(nextPending(10, {10}, 200), 11);
+      expect(nextPending(199, {199}, 200), 0);
+    });
+
+    test('devuelve null si ya no queda ninguna pendiente', () {
+      final todas = {for (var i = 0; i < 200; i++) i};
+      expect(nextPending(5, todas, 200), isNull);
+      expect(previousPending(5, todas, 200), isNull);
+      expect(firstPending(todas, 200), isNull);
+    });
+
+    test('firstPending: la primera sin acertar', () {
+      expect(firstPending({}, 200), 0);
+      expect(firstPending({0, 1, 2}, 200), 3);
+    });
+
+    test('recorrer todas con nextPending visita cada palabra una vez', () {
+      final vistas = <int>[];
+      var actual = firstPending({}, 200)!;
+      for (var i = 0; i < 200; i++) {
+        vistas.add(actual);
+        actual = nextPending(actual, {}, 200)!;
+      }
+      expect(vistas, [for (var i = 0; i < 200; i++) i]);
+      expect(actual, 0); // dio la vuelta completa
+    });
+  });
+
+  group('matchSelected (modo ordenado)', () {
+    final hund = words[indiceDe('der Hund')];
+
+    test('acepta la respuesta de la palabra seleccionada', () {
+      final r = matchSelected('dog', hund, 7, QuizMode.deToEn);
+      expect(r!.index, 7);
+      expect(r.answer, 'dog');
+    });
+
+    test('rechaza la respuesta de otra palabra', () {
+      expect(matchSelected('cat', hund, 7, QuizMode.deToEn), isNull);
+    });
+
+    test('usa las mismas reglas de normalización', () {
+      expect(matchSelected('  THE Dog! ', hund, 7, QuizMode.deToEn), isNotNull);
+      final madchen = words[indiceDe('das Mädchen')];
+      expect(matchSelected('Maedchen', madchen, 1, QuizMode.enToDe), isNotNull);
+      expect(matchSelected('madchen', madchen, 1, QuizMode.enToDe), isNotNull);
+      expect(matchSelected('das Mädchen', madchen, 1, QuizMode.enToDe), isNotNull);
+    });
+
+    test('no hay ambigüedad: "be" se acepta de inmediato para sein', () {
+      final sein = words[indiceDe('sein')];
+      expect(matchSelected('be', sein, 3, QuizMode.deToEn), isNotNull);
+    });
+
+    test('texto vacío no coincide', () {
+      expect(matchSelected('', hund, 7, QuizMode.deToEn), isNull);
+      expect(matchSelected('  ', hund, 7, QuizMode.deToEn), isNull);
+    });
+  });
+
   group('integridad de los datos', () {
     test('hay 200 palabras', () {
       expect(words.length, 200);

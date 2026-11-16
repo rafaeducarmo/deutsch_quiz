@@ -5,6 +5,11 @@ quizzes de Sporcle. Escribes las respuestas en un solo campo de texto y cada
 palabra se marca sola al acertarla, sin temporizador.
 
 - **Dos modos:** DE → EN (ves el alemán, escribes inglés) y EN → DE (al revés).
+- **Ordenado / Libre:** en *Ordenado* (por defecto) siempre hay una palabra
+  resaltada y el campo solo acepta su respuesta; al acertar, la selección salta
+  a la siguiente pendiente. Se navega con los botones Anterior / Siguiente,
+  con Tab / Shift+Tab o haciendo clic en una celda. En *Libre* se puede
+  escribir cualquier palabra pendiente.
 - **Botones:** "Me rindo" muestra en rojo lo que falta; "Reiniciar" empieza de cero.
 - **Reglas:** se ignoran mayúsculas, puntuación y espacios extra; el artículo
   alemán es opcional y ä/ae/a, ö/oe/o, ü/ue/u, ß/ss valen igual. Si lo que
