@@ -1,10 +1,13 @@
 // Tests de la pantalla del quiz.
 
+import 'dart:math';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'package:deutsch_quiz/main.dart';
+import 'package:deutsch_quiz/quiz_logic.dart';
 import 'package:deutsch_quiz/words.dart';
 
 /// Simula presionar Enter en el campo de texto.
@@ -25,11 +28,14 @@ String textoDelCampo(WidgetTester tester) =>
 
 /// Abre la app en una pantalla ancha de escritorio (4 columnas).
 /// Por defecto la app arranca en modo ORDENADO; con [libre] cambia a LIBRE.
-Future<void> abrir(WidgetTester tester, {bool libre = false}) async {
+/// [azar] fija el generador aleatorio (con una semilla) para conocer el orden
+/// que producirá "Mezclar orden".
+Future<void> abrir(WidgetTester tester,
+    {bool libre = false, Random? azar}) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(const DeutschQuizApp());
+  await tester.pumpWidget(DeutschQuizApp(random: azar));
   await tester.pump();
   if (libre) {
     await tester.tap(find.byKey(const Key('orden_libre')));
@@ -533,6 +539,231 @@ void main() {
 
       expect(find.textContaining('0/200'), findsOneWidget);
       await expectSeleccion(tester, 'man');
+    });
+  });
+
+  // ========================== MEZCLAR ORDEN ==========================
+
+  group('mezclar orden', () {
+    const semilla = 42;
+
+    /// Los dos primeros órdenes que producirá un Random(semilla): el primero
+    /// al activar el interruptor y el segundo al reiniciar.
+    (List<int>, List<int>) ordenes() {
+      final azar = Random(semilla);
+      return (shuffledOrder(200, azar), shuffledOrder(200, azar));
+    }
+
+    /// Comprueba que las primeras palabras de la columna 1 son las de [orden],
+    /// de arriba hacia abajo.
+    void expectColumnaUno(WidgetTester tester, List<int> orden) {
+      for (var p = 0; p < 6; p++) {
+        final texto = find.text(words[orden[p]].german);
+        expect(texto, findsOneWidget, reason: 'posición $p');
+        if (p > 0) {
+          final antes = tester.getTopLeft(find.text(words[orden[p - 1]].german));
+          final ahora = tester.getTopLeft(texto);
+          expect(ahora.dx, antes.dx, reason: 'misma columna');
+          expect(ahora.dy, greaterThan(antes.dy), reason: 'debajo de la anterior');
+        }
+      }
+    }
+
+    testWidgets('la semilla de prueba da órdenes distintos entre sí y del original',
+        (tester) async {
+      final (o1, o2) = ordenes();
+      expect(o1[0], isNot(0));
+      expect(o2[0], isNot(0));
+      expect(o1[0], isNot(o2[0]));
+    });
+
+    testWidgets('activar el interruptor reparte las palabras en orden aleatorio',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      expect(find.text('der Mann'), findsOneWidget); // orden original al inicio
+
+      await tocar(tester, const Key('mezclar'));
+
+      expectColumnaUno(tester, o1);
+      expect(find.textContaining('0/200'), findsOneWidget);
+      await expectSeleccion(tester, words[o1[0]].german);
+      expect(campoTieneFoco(tester), isTrue);
+    });
+
+    testWidgets('Reiniciar genera un orden nuevo', (tester) async {
+      final (o1, o2) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+      expectColumnaUno(tester, o1);
+
+      await tester.tap(find.text('Reiniciar'));
+      await tester.pump();
+      await tester.pump();
+
+      expectColumnaUno(tester, o2);
+      await expectSeleccion(tester, words[o2[0]].german);
+      expect(campoTieneFoco(tester), isTrue);
+    });
+
+    testWidgets('Reiniciar después de rendirse también mezcla de nuevo',
+        (tester) async {
+      final (_, o2) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+      await tester.tap(find.text('Me rindo'));
+      await tester.pump();
+
+      await tester.tap(find.text('Reiniciar'));
+      await tester.pump();
+      await tester.pump();
+
+      expectColumnaUno(tester, o2);
+      expect(campoActivo(tester), isTrue);
+      expect(campoTieneFoco(tester), isTrue);
+    });
+
+    testWidgets('desactivar el interruptor vuelve al orden original',
+        (tester) async {
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+      await tocar(tester, const Key('mezclar'));
+
+      expectColumnaUno(tester, [for (var i = 0; i < 200; i++) i]);
+      await expectSeleccion(tester, 'der Mann');
+    });
+
+    testWidgets('ordenado: la selección y la navegación siguen el orden mezclado',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+
+      // La respuesta de la palabra ORIGINAL 1 no vale (ya no es la seleccionada).
+      await tester.enterText(find.byType(TextField), words[0].english.first);
+      await tester.pump();
+      expect(find.textContaining('0/200'), findsOneWidget);
+
+      // La de la seleccionada sí, y la selección pasa a la siguiente POSICIÓN.
+      await tester.enterText(
+          find.byType(TextField), words[o1[0]].english.first);
+      await tester.pump();
+      expect(find.textContaining('1/200'), findsOneWidget);
+      await expectSeleccion(tester, words[o1[1]].german);
+
+      await tocar(tester, const Key('btn_siguiente'));
+      await expectSeleccion(tester, words[o1[2]].german);
+      await tocar(tester, const Key('btn_anterior'));
+      await expectSeleccion(tester, words[o1[1]].german);
+
+      // Tab también sigue el orden mezclado.
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await expectSeleccion(tester, words[o1[2]].german);
+      expect(campoTieneFoco(tester), isTrue);
+    });
+
+    testWidgets('ordenado: la navegación circular usa la última posición mezclada',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+
+      await tocar(tester, const Key('btn_anterior')); // desde la posición 0
+      await expectSeleccion(tester, words[o1[199]].german);
+    });
+
+    testWidgets('ordenado: se pueden completar las 200 en orden mezclado',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+
+      for (final i in o1) {
+        await tester.enterText(find.byType(TextField), words[i].english.first);
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('200/200'), findsOneWidget);
+      expect(find.textContaining('Felicidades'), findsOneWidget);
+    });
+
+    testWidgets('EN → DE ordenado con mezcla: se ve el inglés y se escribe el alemán',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('modo_en_de'));
+      await tocar(tester, const Key('mezclar'));
+
+      final primera = words[o1[0]];
+      await expectSeleccion(tester, promptFor(primera, QuizMode.enToDe));
+
+      await tester.enterText(find.byType(TextField), primera.german);
+      await tester.pump();
+      expect(find.textContaining('1/200'), findsOneWidget);
+      await expectSeleccion(
+          tester, promptFor(words[o1[1]], QuizMode.enToDe));
+    });
+
+    testWidgets('libre con mezcla: cualquier palabra se acepta y no hay resaltado',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, libre: true, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+
+      expectColumnaUno(tester, o1);
+      expect(find.byKey(const Key('seleccion')), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'dog');
+      await tester.pump();
+      expect(find.textContaining('1/200'), findsOneWidget);
+      expect(find.text('✔ der Hund = dog'), findsOneWidget);
+      expect(campoTieneFoco(tester), isTrue);
+    });
+
+    testWidgets('libre con mezcla: Reiniciar da un orden nuevo y Me rindo funciona',
+        (tester) async {
+      final (_, o2) = ordenes();
+      await abrir(tester, libre: true, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+      await tester.tap(find.text('Reiniciar'));
+      await tester.pump();
+      await tester.pump();
+      expectColumnaUno(tester, o2);
+
+      await tester.tap(find.text('Me rindo'));
+      await tester.pump();
+      expect(campoActivo(tester), isFalse);
+      final primera = words[o2[0]];
+      final roja = tester.widget<Text>(find.text(primera.english.first));
+      expect(roja.style!.color, Colors.red.shade800);
+    });
+
+    testWidgets('EN → DE libre con mezcla: se acepta cualquier palabra', (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, libre: true, azar: Random(semilla));
+      await tocar(tester, const Key('modo_en_de'));
+      await tocar(tester, const Key('mezclar'));
+
+      await tester.enterText(find.byType(TextField), 'hund');
+      await tester.pump();
+      expect(find.textContaining('1/200'), findsOneWidget);
+      expect(find.text('✔ dog = der Hund'), findsOneWidget);
+      expect(find.text(promptFor(words[o1[0]], QuizMode.enToDe)), findsOneWidget);
+    });
+
+    testWidgets('cambiar entre Ordenado y Libre conserva el interruptor activado',
+        (tester) async {
+      final (o1, _) = ordenes();
+      await abrir(tester, azar: Random(semilla));
+      await tocar(tester, const Key('mezclar'));
+      expectColumnaUno(tester, o1);
+
+      await tocar(tester, const Key('orden_libre'));
+      // Sigue mezclado (con un orden nuevo, porque cambiar de modo reinicia).
+      expect(tester.widget<FilterChip>(find.byKey(const Key('mezclar'))).selected,
+          isTrue);
+      expect(find.textContaining('0/200'), findsOneWidget);
     });
   });
 

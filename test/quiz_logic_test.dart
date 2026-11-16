@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:deutsch_quiz/quiz_logic.dart';
@@ -250,6 +252,58 @@ void main() {
         }
         expect(vistas.length, 200);
       }
+    });
+  });
+
+  group('orden aleatorio', () {
+    test('shuffledOrder es una permutación: cada número sale una sola vez', () {
+      final orden = shuffledOrder(200, Random(1));
+      expect(orden.length, 200);
+      expect(orden.toSet().length, 200);
+      expect(orden.reduce(min), 0);
+      expect(orden.reduce(max), 199);
+    });
+
+    test('de verdad cambia el orden (no queda igual al original)', () {
+      final original = [for (var i = 0; i < 200; i++) i];
+      expect(shuffledOrder(200, Random(1)), isNot(original));
+    });
+
+    test('con la misma semilla da el mismo orden; con otra, uno distinto', () {
+      expect(shuffledOrder(200, Random(5)), shuffledOrder(200, Random(5)));
+      expect(shuffledOrder(200, Random(5)), isNot(shuffledOrder(200, Random(6))));
+    });
+
+    test('llamadas seguidas con el mismo Random dan órdenes nuevos', () {
+      final azar = Random(9);
+      expect(shuffledOrder(200, azar), isNot(shuffledOrder(200, azar)));
+    });
+
+    test('casos pequeños: 0 y 1 elementos', () {
+      expect(shuffledOrder(0, Random(1)), isEmpty);
+      expect(shuffledOrder(1, Random(1)), [0]);
+    });
+
+    test('orderedWords sin azar devuelve la lista tal cual', () {
+      expect(identical(orderedWords(words, null), words), isTrue);
+    });
+
+    test('orderedWords con azar contiene las mismas 200 palabras', () {
+      final mezcladas = orderedWords(words, Random(3));
+      expect(mezcladas.length, 200);
+      expect(mezcladas.toSet().length, 200); // ninguna repetida
+      expect(mezcladas.toSet(), words.toSet()); // ninguna perdida
+      expect(mezcladas.map((w) => w.german).toList(),
+          isNot(words.map((w) => w.german).toList()));
+    });
+
+    test('findMatch con una lista mezclada marca las duplicadas en el orden mostrado', () {
+      // "der Morgen" y "morgen" aceptan lo mismo en EN→DE. Se marca primero la
+      // que esté antes EN LA LISTA QUE SE LE PASA (la mostrada en pantalla).
+      final lista = [words[indiceDe('morgen')], words[indiceDe('der Morgen')]];
+      final r = findMatch('morgen', lista, {}, QuizMode.enToDe);
+      expect(r!.index, 0);
+      expect(findMatch('morgen', lista, {0}, QuizMode.enToDe)!.index, 1);
     });
   });
 

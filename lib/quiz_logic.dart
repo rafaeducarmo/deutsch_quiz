@@ -2,6 +2,8 @@
 // Así se puede probar con `flutter test` sin abrir ninguna pantalla,
 // y la pantalla (quiz_screen.dart) solo se encarga de dibujar.
 
+import 'dart:math';
+
 import 'words.dart';
 
 /// Los dos modos de juego.
@@ -105,6 +107,35 @@ int? gridIndex({
 }) {
   final indice = columna * gridRows(total, columnas) + fila;
   return indice < total ? indice : null;
+}
+
+// ---------------------------------------------------------------------------
+// Orden aleatorio
+// ---------------------------------------------------------------------------
+
+/// Devuelve una permutación aleatoria de 0..total-1 (algoritmo Fisher-Yates:
+/// recorre la lista de atrás hacia adelante intercambiando cada elemento con
+/// otro al azar de los que quedan; todas las permutaciones son igual de
+/// probables). Se recibe el [azar] para poder usar una semilla en los tests:
+/// `Random(42)` siempre da el mismo resultado.
+List<int> shuffledOrder(int total, Random azar) {
+  final orden = [for (var i = 0; i < total; i++) i];
+  for (var i = total - 1; i > 0; i--) {
+    final j = azar.nextInt(i + 1); // 0..i
+    final tmp = orden[i];
+    orden[i] = orden[j];
+    orden[j] = tmp;
+  }
+  return orden;
+}
+
+/// Las palabras en el orden en que se muestran: mezcladas con [azar], o tal
+/// cual vienen si [azar] es null. La posición en esta lista es la celda de la
+/// cuadrícula (ver gridIndex): todo lo demás (selección, acertadas,
+/// navegación) trabaja con POSICIONES de esta lista.
+List<Word> orderedWords(List<Word> lista, Random? azar) {
+  if (azar == null) return lista;
+  return [for (final i in shuffledOrder(lista.length, azar)) lista[i]];
 }
 
 // ---------------------------------------------------------------------------

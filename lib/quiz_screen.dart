@@ -2,6 +2,8 @@
 // Aquí solo hay interfaz y estado; las reglas de comparación y la navegación
 // viven en quiz_logic.dart.
 
+import 'dart:math';
+
 // services.dart trae los tipos del teclado (LogicalKeyboardKey, KeyEvent...).
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
@@ -13,7 +15,11 @@ import 'words.dart';
 /// acertadas, mensajes...). Flutter separa el widget (inmutable) de su
 /// estado (la clase _QuizScreenState), que es donde guardamos lo que cambia.
 class QuizScreen extends StatefulWidget {
-  const QuizScreen({super.key});
+  /// [random] es opcional: sirve para que los tests usen un orden conocido
+  /// (con una semilla). Normalmente es null y se usa un Random real.
+  const QuizScreen({super.key, this.random});
+
+  final Random? random;
 
   @override
   State<QuizScreen> createState() => _QuizScreenState();
@@ -50,11 +56,23 @@ class _QuizScreenState extends State<QuizScreen> {
   /// esa). false = modo LIBRE (se acepta cualquier palabra pendiente).
   bool _ordenado = true;
 
-  /// Índice de la palabra seleccionada (solo se usa en modo ordenado).
+  /// true = el interruptor "Mezclar orden" está activado.
+  bool _mezclar = false;
+
+  /// Las palabras en el orden en que se muestran en la cuadrícula. Normalmente
+  /// es `words` tal cual; con "Mezclar orden" es una copia en orden aleatorio.
+  /// A PARTIR DE AQUÍ, todo índice (selección, acertadas) es una POSICIÓN en
+  /// esta lista, no una posición en `words`.
+  List<Word> _lista = words;
+
+  /// Generador de números aleatorios (el de los tests o uno real).
+  late final Random _random = widget.random ?? Random();
+
+  /// Posición de la palabra seleccionada (solo se usa en modo ordenado).
   /// null cuando no hay ninguna: modo libre, o ya están todas acertadas.
   int? _seleccion = 0;
 
-  /// Palabras acertadas: índice en `words` -> texto que se muestra en la celda.
+  /// Palabras acertadas: posición en `_lista` -> texto que se muestra en la celda.
   final Map<int, String> _acertadas = {};
 
   /// true después de presionar "Me rindo".
@@ -199,9 +217,9 @@ class _QuizScreenState extends State<QuizScreen> {
     if (_ordenado) {
       final sel = _seleccion;
       if (sel == null) return null;
-      return matchSelected(texto, words[sel], sel, _modo);
+      return matchSelected(texto, _lista[sel], sel, _modo);
     }
-    return findMatch(texto, words, _acertadas.keys.toSet(), _modo,
+    return findMatch(texto, _lista, _acertadas.keys.toSet(), _modo,
         enviado: enviado);
   }
 
@@ -216,7 +234,7 @@ class _QuizScreenState extends State<QuizScreen> {
       }
       _mensaje = _ganado
           ? '🎉 ¡Felicidades! Completaste las ${words.length} palabras'
-          : '✔ ${promptFor(words[r.index], _modo)} = ${r.answer}';
+          : '✔ ${promptFor(_lista[r.index], _modo)} = ${r.answer}';
       _mensajeEsError = false;
     });
     _controller.clear(); // vaciar el campo (no dispara onChanged)
@@ -286,6 +304,9 @@ class _QuizScreenState extends State<QuizScreen> {
       _mensaje = '';
       _mensajeEsError = false;
       _seleccion = _ordenado ? 0 : null; // vuelve a la palabra 1
+      // Orden nuevo en CADA reinicio: mezclado si el interruptor está
+      // activado, o el original si no.
+      _lista = orderedWords(words, _mezclar ? _random : null);
     });
     _controller.clear();
     _devolverFoco(); // el campo ya estará activo cuando se pida el foco
@@ -303,6 +324,13 @@ class _QuizScreenState extends State<QuizScreen> {
   void _cambiarOrden(bool ordenado) {
     if (ordenado == _ordenado) return;
     setState(() => _ordenado = ordenado);
+    _reiniciar();
+  }
+
+  /// Activar o desactivar "Mezclar orden" = cambiar la opción y reiniciar
+  /// (el reinicio es lo que genera el orden nuevo).
+  void _cambiarMezcla(bool mezclar) {
+    setState(() => _mezclar = mezclar);
     _reiniciar();
   }
 
@@ -386,6 +414,15 @@ class _QuizScreenState extends State<QuizScreen> {
           selected: !_ordenado,
           showCheckmark: false,
           onSelected: (_) => _cambiarOrden(false),
+        ),
+        // Interruptor: con el chip marcado, cada reinicio mezcla de nuevo.
+        FilterChip(
+          key: const Key('mezclar'),
+          label: const Text('Mezclar orden'),
+          selected: _mezclar,
+          showCheckmark: false,
+          avatar: Icon(_mezclar ? Icons.shuffle_on : Icons.shuffle, size: 18),
+          onSelected: _cambiarMezcla,
         ),
         if (_ordenado) ...[
           const SizedBox(width: 4),
@@ -555,7 +592,7 @@ class _QuizScreenState extends State<QuizScreen> {
       fondo = Colors.green.shade400;
       colorTexto = Colors.black;
     } else if (_rendido) {
-      textoRespuesta = revealAnswer(words[indice], _modo); // roja
+      textoRespuesta = revealAnswer(_lista[indice], _modo); // roja
       fondo = Colors.yellow.shade300;
       colorTexto = Colors.red.shade800;
     } else {
@@ -579,7 +616,7 @@ class _QuizScreenState extends State<QuizScreen> {
         children: [
           Expanded(
             child: _celda(
-              promptFor(words[indice], _modo),
+              promptFor(_lista[indice], _modo),
               fondo: seleccionada
                   ? Colors.indigo.shade500
                   : Colors.blueGrey.shade800,

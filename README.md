@@ -10,6 +10,9 @@ palabra se marca sola al acertarla, sin temporizador.
   a la siguiente pendiente. Se navega con los botones Anterior / Siguiente,
   con Tab / Shift+Tab o haciendo clic en una celda. En *Libre* se puede
   escribir cualquier palabra pendiente.
+- **Mezclar orden:** reparte las 200 palabras en orden aleatorio en la
+  cuadrícula (y en la navegación del modo ordenado). Se genera un orden nuevo
+  cada vez que activas el interruptor o reinicias.
 - **Botones:** "Me rindo" muestra en rojo lo que falta; "Reiniciar" empieza de cero.
 - **Reglas:** se ignoran mayúsculas, puntuación y espacios extra; el artículo
   alemán es opcional y ä/ae/a, ö/oe/o, ü/ue/u, ß/ss valen igual. Si lo que
