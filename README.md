@@ -19,6 +19,13 @@ palabra se marca sola al acertarla, sin temporizador.
   escribes es el inicio de otra respuesta pendiente (p. ej. "be" y "become"),
   se marca al presionar Enter.
 
+## Probarla en línea
+
+**https://rafaeducarmo.github.io/deutsch_quiz/**
+
+Se publica sola en GitHub Pages en cada push a `main` (ver
+`.github/workflows/deploy.yml`).
+
 ## Cómo correrla
 
 ```
