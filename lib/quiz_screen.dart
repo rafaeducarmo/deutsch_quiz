@@ -196,23 +196,8 @@ class _QuizScreenState extends State<QuizScreen> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        SegmentedButton<QuizMode>(
-          // softWrap: false + maxLines: 1 -> el texto nunca se parte en dos
-          // líneas; el botón se ensancha lo necesario.
-          segments: const [
-            ButtonSegment(
-              value: QuizMode.deToEn,
-              label: Text('DE → EN', softWrap: false, maxLines: 1),
-            ),
-            ButtonSegment(
-              value: QuizMode.enToDe,
-              label: Text('EN → DE', softWrap: false, maxLines: 1),
-            ),
-          ],
-          selected: {_modo},
-          showSelectedIcon: false,
-          onSelectionChanged: (seleccion) => _cambiarModo(seleccion.first),
-        ),
+        _chipModo(QuizMode.deToEn, 'DE', 'EN', const Key('modo_de_en')),
+        _chipModo(QuizMode.enToDe, 'EN', 'DE', const Key('modo_en_de')),
         FilledButton(
           onPressed: _campoActivo ? _rendirse : null, // null = desactivado
           child: const Text('Me rindo'),
@@ -286,6 +271,31 @@ class _QuizScreenState extends State<QuizScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Opción del selector de modo: un ChoiceChip que mide su propio contenido.
+  /// La flecha es un Icon (un dibujo), no el carácter "→" dentro de un Text:
+  /// ese carácter no está en la fuente por defecto del navegador y Chrome lo
+  /// dibuja con otra fuente de otro ancho, lo que recortaba la última letra
+  /// del botón. Un Icon mide siempre lo mismo.
+  Widget _chipModo(QuizMode modo, String origen, String destino, Key llave) {
+    return ChoiceChip(
+      key: llave,
+      selected: _modo == modo,
+      showCheckmark: false,
+      onSelected: (_) => _cambiarModo(modo),
+      label: Row(
+        mainAxisSize: MainAxisSize.min, // el chip se ajusta a su contenido
+        children: [
+          Text(origen),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(Icons.arrow_forward, size: 16),
+          ),
+          Text(destino),
+        ],
       ),
     );
   }

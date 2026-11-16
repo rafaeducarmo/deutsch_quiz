@@ -185,7 +185,7 @@ void main() {
   testWidgets('modo EN → DE: se ve el inglés y se escribe el alemán',
       (tester) async {
     await abrir(tester);
-    await tester.tap(find.text('EN → DE'));
+    await tester.tap(find.byKey(const Key('modo_en_de')));
     await tester.pump();
     await tester.pump();
 
@@ -205,7 +205,7 @@ void main() {
   testWidgets('el selector muestra hasta 3 traducciones separadas por " / "',
       (tester) async {
     await abrir(tester);
-    await tester.tap(find.text('EN → DE'));
+    await tester.tap(find.byKey(const Key('modo_en_de')));
     await tester.pump();
     expect(find.text('woman / wife / mrs'), findsOneWidget);
   });
@@ -218,7 +218,7 @@ void main() {
     await tester.tap(find.text('Me rindo'));
     await tester.pump();
 
-    await tester.tap(find.text('EN → DE'));
+    await tester.tap(find.byKey(const Key('modo_en_de')));
     await tester.pump();
     await tester.pump();
 
@@ -227,7 +227,7 @@ void main() {
     expect(campoTieneFoco(tester), isTrue);
 
     // Y al volver a DE → EN también.
-    await tester.tap(find.text('DE → EN'));
+    await tester.tap(find.byKey(const Key('modo_de_en')));
     await tester.pump();
     await tester.pump();
     expect(find.text('der Mann'), findsOneWidget);
@@ -236,7 +236,7 @@ void main() {
 
   testWidgets('en EN → DE, "Me rindo" muestra el alemán en rojo', (tester) async {
     await abrir(tester);
-    await tester.tap(find.text('EN → DE'));
+    await tester.tap(find.byKey(const Key('modo_en_de')));
     await tester.pump();
     await tester.tap(find.text('Me rindo'));
     await tester.pump();
