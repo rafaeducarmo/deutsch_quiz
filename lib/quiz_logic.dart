@@ -4,24 +4,18 @@
 
 import 'dart:math';
 
-import 'words.dart';
+import 'quiz_model.dart';
 
-/// Los dos modos de juego.
-enum QuizMode {
-  /// Veo el alemán, escribo el inglés.
-  deToEn,
+// Quien importe quiz_logic.dart también recibe Language, QuizMode y QuizItem.
+export 'quiz_model.dart';
 
-  /// Veo el inglés, escribo el alemán.
-  enToDe,
-}
-
-/// Resultado de una coincidencia: qué palabra se acertó y con qué texto.
+/// Resultado de una coincidencia: qué elemento se acertó y con qué texto.
 class MatchResult {
-  /// Posición de la palabra en la lista `words`.
+  /// Posición del elemento en la lista que se le pasó a la función.
   final int index;
 
-  /// La respuesta tal como está en los datos (sin normalizar),
-  /// p. ej. "dog" o "der Hund". Sirve para mostrarla en la celda.
+  /// El texto que se muestra en la celda verde y en el mensaje, tal como
+  /// está en los datos (sin normalizar), p. ej. "dog" o "Intérprete".
   final String answer;
 
   const MatchResult(this.index, this.answer);
@@ -31,12 +25,18 @@ class MatchResult {
 // Normalización
 // ---------------------------------------------------------------------------
 
-/// Quita todo lo que no sea letra, número o espacio, y junta los espacios.
-/// `unicode: true` hace que \p{L} (cualquier letra) funcione en Dart.
+/// Pasa a minúsculas, quita todo lo que no sea letra, número o espacio, y
+/// junta los espacios. `unicode: true` hace que \p{L} (cualquier letra)
+/// funcione en Dart. Esto elimina también ¿ ? ¡ ! y las comillas.
+///
+/// Los guiones se cambian por ESPACIO antes de limpiar (no se borran), así
+/// "self-correction" y "self correction" quedan iguales.
 String _limpiar(String texto) {
-  final sinPuntuacion = texto
+  final sinGuiones = texto
       .toLowerCase()
-      .replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), '');
+      .replaceAll(RegExp(r'[-‐‑–—]'), ' ');
+  final sinPuntuacion =
+      sinGuiones.replaceAll(RegExp(r'[^\p{L}\p{N}\s]', unicode: true), '');
   return sinPuntuacion.trim().replaceAll(RegExp(r'\s+'), ' ');
 }
 
@@ -67,26 +67,54 @@ String normalizeGerman(String texto) {
   return _quitarPrefijo(t, const ['der', 'die', 'das']);
 }
 
-/// Normaliza según el idioma que hay que ESCRIBIR en cada modo.
-String normalize(String texto, QuizMode modo) =>
-    modo == QuizMode.deToEn ? normalizeEnglish(texto) : normalizeGerman(texto);
+/// Normaliza una respuesta en ESPAÑOL: minúsculas, sin puntuación (¿ ? ¡ !
+/// incluidos), tildes opcionales (á=a, é=e, í=i, ó=o, ú=u, ü=u), ñ=n y
+/// artículo el/la/los/las/un/una opcional al inicio.
+String normalizeSpanish(String texto) {
+  const equivalencias = {
+    'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', //
+  };
+  final sinTildes = _limpiar(texto)
+      .split('')
+      .map((letra) => equivalencias[letra] ?? letra)
+      .join();
+  return _quitarPrefijo(sinTildes, const ['los', 'las', 'el', 'la', 'una', 'un']);
+}
+
+/// Normaliza [texto] con las reglas del [idioma] en el que se ESCRIBE.
+String normalize(String texto, Language idioma) {
+  switch (idioma) {
+    case Language.german:
+      return normalizeGerman(texto);
+    case Language.english:
+      return normalizeEnglish(texto);
+    case Language.spanish:
+      return normalizeSpanish(texto);
+  }
+}
 
 // ---------------------------------------------------------------------------
-// Datos de cada palabra según el modo
+// Datos de cada elemento según el modo
 // ---------------------------------------------------------------------------
 
-/// Respuestas válidas de una palabra, SIN normalizar (tal como están en los datos).
-List<String> rawAnswers(Word palabra, QuizMode modo) =>
-    modo == QuizMode.deToEn ? palabra.english : [palabra.german];
+/// Respuestas válidas de un elemento, SIN normalizar (tal como están en los
+/// datos): las formas del idioma que se escribe. La primera es la principal.
+List<String> rawAnswers(QuizItem item, QuizMode modo) =>
+    item.answersIn(modo.to);
 
-/// Lo que se le muestra al jugador como pregunta.
-/// DE→EN: el alemán. EN→DE: hasta 3 traducciones separadas por " / ".
-String promptFor(Word palabra, QuizMode modo) => modo == QuizMode.deToEn
-    ? palabra.german
-    : palabra.english.take(3).join(' / ');
+/// Lo que se le muestra al jugador como pregunta: la forma (o las primeras
+/// formas, según el elemento) del idioma que se VE, separadas por " / ".
+String promptFor(QuizItem item, QuizMode modo) =>
+    item.answersIn(modo.from).take(item.promptLimit).join(' / ');
 
-/// Respuesta que se muestra al rendirse (la principal de la palabra).
-String revealAnswer(Word palabra, QuizMode modo) => rawAnswers(palabra, modo).first;
+/// Respuesta que se muestra al rendirse (la principal del elemento).
+String revealAnswer(QuizItem item, QuizMode modo) =>
+    rawAnswers(item, modo).first;
+
+/// Qué texto se muestra al acertar con la forma [escrita]: la forma oficial
+/// (la primera) en los elementos que lo piden, o la que se acertó en el resto.
+String _textoAcertado(QuizItem item, QuizMode modo, String escrita) =>
+    item.showFirstOnMatch ? revealAnswer(item, modo) : escrita;
 
 // ---------------------------------------------------------------------------
 // Cuadrícula
@@ -129,11 +157,11 @@ List<int> shuffledOrder(int total, Random azar) {
   return orden;
 }
 
-/// Las palabras en el orden en que se muestran: mezcladas con [azar], o tal
+/// Los elementos en el orden en que se muestran: mezclados con [azar], o tal
 /// cual vienen si [azar] es null. La posición en esta lista es la celda de la
 /// cuadrícula (ver gridIndex): todo lo demás (selección, acertadas,
 /// navegación) trabaja con POSICIONES de esta lista.
-List<Word> orderedWords(List<Word> lista, Random? azar) {
+List<T> orderedWords<T>(List<T> lista, Random? azar) {
   if (azar == null) return lista;
   return [for (final i in shuffledOrder(lista.length, azar)) lista[i]];
 }
@@ -177,14 +205,16 @@ int? firstPending(Set<int> acertadas, int total) =>
 /// ser el inicio de "become" y se acepta de inmediato.
 MatchResult? matchSelected(
   String entrada,
-  Word palabra,
+  QuizItem palabra,
   int indice,
   QuizMode modo,
 ) {
-  final texto = normalize(entrada, modo);
+  final texto = normalize(entrada, modo.to);
   if (texto.isEmpty) return null;
   for (final cruda in rawAnswers(palabra, modo)) {
-    if (normalize(cruda, modo) == texto) return MatchResult(indice, cruda);
+    if (normalize(cruda, modo.to) == texto) {
+      return MatchResult(indice, _textoAcertado(palabra, modo, cruda));
+    }
   }
   return null;
 }
@@ -196,7 +226,7 @@ MatchResult? matchSelected(
 /// Busca qué palabra PENDIENTE coincide con lo que escribió el jugador.
 ///
 /// - [entrada]: el texto del campo.
-/// - [lista]: todas las palabras (normalmente `words`).
+/// - [lista]: los elementos, en el orden en que se muestran.
 /// - [acertadas]: índices que ya están resueltos (se ignoran).
 /// - [enviado]: true si el jugador presionó Enter.
 ///
@@ -208,23 +238,23 @@ MatchResult? matchSelected(
 /// Devuelve null si no hay nada que marcar.
 MatchResult? findMatch(
   String entrada,
-  List<Word> lista,
+  List<QuizItem> lista,
   Set<int> acertadas,
   QuizMode modo, {
   bool enviado = false,
 }) {
-  final texto = normalize(entrada, modo);
+  final texto = normalize(entrada, modo.to);
   if (texto.isEmpty) return null;
 
-  // 1) Primera palabra pendiente cuya respuesta coincide exactamente.
+  // 1) Primer elemento pendiente cuya respuesta coincide exactamente.
   int? indice;
   String? respuesta;
   for (var i = 0; i < lista.length && indice == null; i++) {
     if (acertadas.contains(i)) continue;
     for (final cruda in rawAnswers(lista[i], modo)) {
-      if (normalize(cruda, modo) == texto) {
+      if (normalize(cruda, modo.to) == texto) {
         indice = i;
-        respuesta = cruda;
+        respuesta = _textoAcertado(lista[i], modo, cruda);
         break;
       }
     }
@@ -232,12 +262,12 @@ MatchResult? findMatch(
   if (indice == null) return null;
 
   // 2) Si no se presionó Enter, comprobar que no sea inicio de otra respuesta
-  //    más larga de OTRA palabra pendiente.
+  //    más larga de OTRO elemento pendiente.
   if (!enviado) {
     for (var j = 0; j < lista.length; j++) {
       if (j == indice || acertadas.contains(j)) continue;
       for (final cruda in rawAnswers(lista[j], modo)) {
-        final otra = normalize(cruda, modo);
+        final otra = normalize(cruda, modo.to);
         if (otra.length > texto.length && otra.startsWith(texto)) {
           return null; // ambiguo: esperar a Enter
         }

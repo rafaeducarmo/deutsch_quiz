@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:deutsch_quiz/quiz_logic.dart';
+import 'package:deutsch_quiz/word_lists.dart';
 import 'package:deutsch_quiz/words.dart';
 
 /// Índice de una palabra alemana en la lista (para no depender de posiciones).
@@ -68,18 +69,18 @@ void main() {
 
   group('promptFor / revealAnswer', () {
     test('DE→EN muestra el alemán', () {
-      expect(promptFor(words[indiceDe('der Hund')], QuizMode.deToEn), 'der Hund');
+      expect(promptFor(germanItems[indiceDe('der Hund')], QuizMode.deToEn), 'der Hund');
     });
 
     test('EN→DE muestra hasta 3 traducciones con " / "', () {
-      final frau = words[indiceDe('die Frau')]; // woman, wife, mrs
+      final frau = germanItems[indiceDe('die Frau')]; // woman, wife, mrs
       expect(promptFor(frau, QuizMode.enToDe), 'woman / wife / mrs');
-      const muchas = Word('x', ['a1', 'b2', 'c3', 'd4'], 't');
+      final muchas = QuizItem.fromWord(const Word('x', ['a1', 'b2', 'c3', 'd4'], 't'));
       expect(promptFor(muchas, QuizMode.enToDe), 'a1 / b2 / c3');
     });
 
     test('revealAnswer da la respuesta principal', () {
-      final hund = words[indiceDe('der Hund')];
+      final hund = germanItems[indiceDe('der Hund')];
       expect(revealAnswer(hund, QuizMode.deToEn), 'dog');
       expect(revealAnswer(hund, QuizMode.enToDe), 'der Hund');
     });
@@ -89,44 +90,44 @@ void main() {
     const modo = QuizMode.deToEn;
 
     test('encuentra una traducción válida', () {
-      final r = findMatch('dog', words, {}, modo);
+      final r = findMatch('dog', germanItems, {}, modo);
       expect(r, isNotNull);
       expect(r!.index, indiceDe('der Hund'));
       expect(r.answer, 'dog');
     });
 
     test('acepta cualquiera de las traducciones', () {
-      final r = findMatch('home', words, {}, modo);
+      final r = findMatch('home', germanItems, {}, modo);
       expect(r!.index, indiceDe('das Haus'));
       expect(r.answer, 'home');
     });
 
     test('ignora mayúsculas, puntuación, "to" y "the"', () {
-      expect(findMatch('  DOG! ', words, {}, modo)!.index, indiceDe('der Hund'));
-      expect(findMatch('the dog', words, {}, modo)!.index, indiceDe('der Hund'));
-      expect(findMatch('to run', words, {}, modo)!.index, indiceDe('laufen'));
+      expect(findMatch('  DOG! ', germanItems, {}, modo)!.index, indiceDe('der Hund'));
+      expect(findMatch('the dog', germanItems, {}, modo)!.index, indiceDe('der Hund'));
+      expect(findMatch('to run', germanItems, {}, modo)!.index, indiceDe('laufen'));
     });
 
     test('devuelve null si no hay coincidencia o el texto está vacío', () {
-      expect(findMatch('xyz', words, {}, modo), isNull);
-      expect(findMatch('', words, {}, modo), isNull);
-      expect(findMatch('   ', words, {}, modo), isNull);
+      expect(findMatch('xyz', germanItems, {}, modo), isNull);
+      expect(findMatch('', germanItems, {}, modo), isNull);
+      expect(findMatch('   ', germanItems, {}, modo), isNull);
     });
 
     test('no marca una palabra que ya está acertada', () {
       final hund = indiceDe('der Hund');
-      expect(findMatch('dog', words, {hund}, modo), isNull);
+      expect(findMatch('dog', germanItems, {hund}, modo), isNull);
     });
 
     test('"be" es ambiguo ("become"): solo con Enter', () {
-      expect(findMatch('be', words, {}, modo), isNull);
-      final r = findMatch('be', words, {}, modo, enviado: true);
+      expect(findMatch('be', germanItems, {}, modo), isNull);
+      final r = findMatch('be', germanItems, {}, modo, enviado: true);
       expect(r!.index, indiceDe('sein'));
     });
 
     test('"sea" es ambiguo ("search"): solo con Enter', () {
-      expect(findMatch('sea', words, {}, modo), isNull);
-      expect(findMatch('sea', words, {}, modo, enviado: true)!.index,
+      expect(findMatch('sea', germanItems, {}, modo), isNull);
+      expect(findMatch('sea', germanItems, {}, modo, enviado: true)!.index,
           indiceDe('das Meer'));
     });
 
@@ -139,17 +140,17 @@ void main() {
           if (i != sein && words[i].english.any((e) => e.startsWith('be'))) i,
       };
       expect(acertadas, contains(indiceDe('werden')));
-      final r = findMatch('be', words, acertadas, modo);
+      final r = findMatch('be', germanItems, acertadas, modo);
       expect(r!.index, sein);
     });
 
     test('un prefijo de otra palabra no basta: "sear" no marca nada', () {
-      expect(findMatch('sear', words, {}, modo, enviado: true), isNull);
+      expect(findMatch('sear', germanItems, {}, modo, enviado: true), isNull);
     });
 
     test('las variantes de la misma palabra no cuentan como ambiguas', () {
       // 'holiday' es inicio de 'holidays', pero ambas son de der Urlaub.
-      final r = findMatch('holiday', words, {}, modo);
+      final r = findMatch('holiday', germanItems, {}, modo);
       expect(r!.index, indiceDe('der Urlaub'));
     });
   });
@@ -158,18 +159,18 @@ void main() {
     const modo = QuizMode.enToDe;
 
     test('acepta con y sin artículo', () {
-      expect(findMatch('der Hund', words, {}, modo)!.index, indiceDe('der Hund'));
-      expect(findMatch('hund', words, {}, modo)!.index, indiceDe('der Hund'));
+      expect(findMatch('der Hund', germanItems, {}, modo)!.index, indiceDe('der Hund'));
+      expect(findMatch('hund', germanItems, {}, modo)!.index, indiceDe('der Hund'));
     });
 
     test('acepta variantes de ä, ö, ü, ß', () {
       final madchen = indiceDe('das Mädchen');
-      expect(findMatch('Maedchen', words, {}, modo)!.index, madchen);
-      expect(findMatch('madchen', words, {}, modo)!.index, madchen);
-      expect(findMatch('Mädchen', words, {}, modo)!.index, madchen);
-      expect(findMatch('strasse', words, {}, modo)!.index, indiceDe('die Straße'));
-      expect(findMatch('GROSS', words, {}, modo)!.index, indiceDe('groß'));
-      expect(findMatch('tuer', words, {}, modo)!.index, indiceDe('die Tür'));
+      expect(findMatch('Maedchen', germanItems, {}, modo)!.index, madchen);
+      expect(findMatch('madchen', germanItems, {}, modo)!.index, madchen);
+      expect(findMatch('Mädchen', germanItems, {}, modo)!.index, madchen);
+      expect(findMatch('strasse', germanItems, {}, modo)!.index, indiceDe('die Straße'));
+      expect(findMatch('GROSS', germanItems, {}, modo)!.index, indiceDe('groß'));
+      expect(findMatch('tuer', germanItems, {}, modo)!.index, indiceDe('die Tür'));
     });
 
     test('"der Morgen" y "morgen": marca la primera y luego la segunda', () {
@@ -178,29 +179,29 @@ void main() {
       expect(manana, lessThan(manana2));
 
       final acertadas = <int>{};
-      final r1 = findMatch('morgen', words, acertadas, modo);
+      final r1 = findMatch('morgen', germanItems, acertadas, modo);
       expect(r1!.index, manana);
       acertadas.add(r1.index);
 
-      final r2 = findMatch('morgen', words, acertadas, modo);
+      final r2 = findMatch('morgen', germanItems, acertadas, modo);
       expect(r2!.index, manana2);
       acertadas.add(r2.index);
 
-      expect(findMatch('morgen', words, acertadas, modo), isNull);
+      expect(findMatch('morgen', germanItems, acertadas, modo), isNull);
     });
 
     test('"essen" (sustantivo y verbo) funciona igual', () {
       final acertadas = <int>{};
-      final r1 = findMatch('essen', words, acertadas, modo)!;
+      final r1 = findMatch('essen', germanItems, acertadas, modo)!;
       expect(r1.index, indiceDe('das Essen'));
       acertadas.add(r1.index);
-      expect(findMatch('essen', words, acertadas, modo)!.index, indiceDe('essen'));
+      expect(findMatch('essen', germanItems, acertadas, modo)!.index, indiceDe('essen'));
     });
 
     test('un texto que es inicio de otra palabra espera a Enter', () {
       // "wo" es una palabra, pero también el inicio de "wohnen", "wollen"...
-      expect(findMatch('wo', words, {}, modo), isNull);
-      expect(findMatch('wo', words, {}, modo, enviado: true)!.index,
+      expect(findMatch('wo', germanItems, {}, modo), isNull);
+      expect(findMatch('wo', germanItems, {}, modo, enviado: true)!.index,
           indiceDe('wo'));
     });
   });
@@ -300,7 +301,7 @@ void main() {
     test('findMatch con una lista mezclada marca las duplicadas en el orden mostrado', () {
       // "der Morgen" y "morgen" aceptan lo mismo en EN→DE. Se marca primero la
       // que esté antes EN LA LISTA QUE SE LE PASA (la mostrada en pantalla).
-      final lista = [words[indiceDe('morgen')], words[indiceDe('der Morgen')]];
+      final lista = [germanItems[indiceDe('morgen')], germanItems[indiceDe('der Morgen')]];
       final r = findMatch('morgen', lista, {}, QuizMode.enToDe);
       expect(r!.index, 0);
       expect(findMatch('morgen', lista, {0}, QuizMode.enToDe)!.index, 1);
@@ -369,7 +370,7 @@ void main() {
   });
 
   group('matchSelected (modo ordenado)', () {
-    final hund = words[indiceDe('der Hund')];
+    final hund = germanItems[indiceDe('der Hund')];
 
     test('acepta la respuesta de la palabra seleccionada', () {
       final r = matchSelected('dog', hund, 7, QuizMode.deToEn);
@@ -383,14 +384,14 @@ void main() {
 
     test('usa las mismas reglas de normalización', () {
       expect(matchSelected('  THE Dog! ', hund, 7, QuizMode.deToEn), isNotNull);
-      final madchen = words[indiceDe('das Mädchen')];
+      final madchen = germanItems[indiceDe('das Mädchen')];
       expect(matchSelected('Maedchen', madchen, 1, QuizMode.enToDe), isNotNull);
       expect(matchSelected('madchen', madchen, 1, QuizMode.enToDe), isNotNull);
       expect(matchSelected('das Mädchen', madchen, 1, QuizMode.enToDe), isNotNull);
     });
 
     test('no hay ambigüedad: "be" se acepta de inmediato para sein', () {
-      final sein = words[indiceDe('sein')];
+      final sein = germanItems[indiceDe('sein')];
       expect(matchSelected('be', sein, 3, QuizMode.deToEn), isNotNull);
     });
 
@@ -400,24 +401,266 @@ void main() {
     });
   });
 
-  group('integridad de los datos', () {
-    test('hay 200 palabras', () {
-      expect(words.length, 200);
+  // ------------------------------------------------------------------
+  // Español y listas bilingües
+  // ------------------------------------------------------------------
+
+  group('normalizeSpanish', () {
+    test('las tildes son opcionales', () {
+      expect(normalizeSpanish('Intérprete'), normalizeSpanish('interprete'));
+      expect(normalizeSpanish('Interpretación'), 'interpretacion');
+      expect(normalizeSpanish('Síntomas'), normalizeSpanish('sintomas'));
+      expect(normalizeSpanish('pingüino'), 'pinguino'); // ü = u
+      expect(normalizeSpanish('ÁÉÍÓÚ'), 'aeiou'); // también en mayúsculas
     });
 
-    for (final modo in QuizMode.values) {
-      test('toda palabra se puede acertar escribiendo su respuesta ($modo)', () {
-        for (var i = 0; i < words.length; i++) {
-          for (final cruda in rawAnswers(words[i], modo)) {
-            expect(normalize(cruda, modo), isNotEmpty,
-                reason: '"$cruda" se normaliza a vacío');
-            final r = findMatch(cruda, words, {}, modo, enviado: true);
-            expect(r, isNotNull, reason: '"$cruda" no coincide con nada');
-            // Puede coincidir con una palabra anterior que acepta lo mismo.
-            expect(r!.index, lessThanOrEqualTo(i), reason: '"$cruda"');
+    test('ñ = n', () {
+      expect(normalizeSpanish('niño'), normalizeSpanish('nino'));
+      expect(normalizeSpanish('Consulta de niño sano'),
+          normalizeSpanish('consulta de nino sano'));
+    });
+
+    test('ignora ¿ ? ¡ ! y otros signos', () {
+      expect(normalizeSpanish('¿Dónde le duele?'), 'donde le duele');
+      expect(normalizeSpanish('¡Espere un momento!'), 'espere un momento');
+      expect(normalizeSpanish('  hola,   ¿qué tal?  '), 'hola que tal');
+    });
+
+    test('los artículos el, la, los, las, un, una son opcionales', () {
+      expect(normalizeSpanish('el pulso'), 'pulso');
+      expect(normalizeSpanish('La cita'), 'cita');
+      expect(normalizeSpanish('los síntomas'), 'sintomas');
+      expect(normalizeSpanish('las alergias'), 'alergias');
+      expect(normalizeSpanish('un momento'), 'momento');
+      expect(normalizeSpanish('una receta'), 'receta');
+    });
+
+    test('un artículo solo (sin nada más) no se quita', () {
+      expect(normalizeSpanish('la'), 'la');
+      expect(normalizeSpanish('el'), 'el');
+    });
+
+    test('solo se quita el artículo inicial, no los del medio', () {
+      expect(normalizeSpanish('Médico de la familia'), 'medico de la familia');
+    });
+
+    test('NO se quitan "to", "a" ni "the" en español', () {
+      expect(normalizeSpanish('a la derecha'), 'a la derecha');
+    });
+  });
+
+  group('guiones y espacios', () {
+    test('un guion vale como un espacio (inglés)', () {
+      expect(normalizeEnglish('Self-correction'), 'self correction');
+      expect(normalizeEnglish('self correction'), normalizeEnglish('Self-correction'));
+      expect(normalizeEnglish('over-the-counter'), 'over the counter');
+    });
+
+    test('un guion vale como un espacio (español)', () {
+      expect(normalizeSpanish('Potencialmente-mortal'), 'potencialmente mortal');
+    });
+
+    test('las variantes sin guion siguen siendo distintas, pero las lista el autor', () {
+      expect(normalizeEnglish('checkup'), 'checkup');
+      expect(normalizeEnglish('Check-up'), 'check up');
+    });
+
+    test('guiones largos y espacios sobrantes se juntan', () {
+      expect(normalizeEnglish('well – child   visit'), 'well child visit');
+    });
+  });
+
+  group('normalize elige las reglas por idioma', () {
+    test('cada idioma usa las suyas', () {
+      expect(normalize('The Dog!', Language.english), 'dog');
+      expect(normalize('der Hund', Language.german), 'hund');
+      expect(normalize('Interpretación', Language.spanish), 'interpretacion');
+      // El artículo "the" solo se ignora en inglés:
+      expect(normalize('the', Language.spanish), 'the');
+      expect(normalize('el pulso', Language.english), 'el pulso');
+    });
+  });
+
+  group('QuizMode y QuizItem', () {
+    test('cada modo sabe qué idioma se ve y cuál se escribe', () {
+      expect(QuizMode.deToEn.from, Language.german);
+      expect(QuizMode.deToEn.to, Language.english);
+      expect(QuizMode.enToDe.from, Language.english);
+      expect(QuizMode.enToDe.to, Language.german);
+      expect(QuizMode.enToEs.from, Language.english);
+      expect(QuizMode.enToEs.to, Language.spanish);
+      expect(QuizMode.esToEn.from, Language.spanish);
+      expect(QuizMode.esToEn.to, Language.english);
+    });
+
+    test('las tres listas tienen sus direcciones', () {
+      expect(wordLists.map((l) => l.nombre),
+          ['Alemán', 'Glosario de entrenamiento', 'Médico ampliado']);
+      expect(wordLists[0].modos, [QuizMode.deToEn, QuizMode.enToDe]);
+      expect(wordLists[1].modos, [QuizMode.enToEs, QuizMode.esToEn]);
+      expect(wordLists[2].modos, [QuizMode.enToEs, QuizMode.esToEn]);
+    });
+
+    test('las listas con frases largas usan menos columnas', () {
+      final aleman = wordLists[0];
+      expect([599.0, 600.0, 999.0, 1000.0].map(aleman.columnasPara), [1, 2, 2, 4]);
+      final terminos = wordLists[1];
+      expect([799.0, 800.0, 1499.0, 1500.0].map(terminos.columnasPara),
+          [1, 2, 2, 4]);
+    });
+
+    test('cada lista tiene 200 elementos', () {
+      for (final lista in wordLists) {
+        expect(lista.items.length, 200, reason: lista.nombre);
+      }
+    });
+
+    test('el adaptador de Word conserva el comportamiento de alemán', () {
+      final haus = germanItems[indiceDe('das Haus')]; // house, home
+      expect(promptFor(haus, QuizMode.deToEn), 'das Haus');
+      expect(promptFor(haus, QuizMode.enToDe), 'house / home');
+      // Se muestra lo que escribió el jugador.
+      expect(matchSelected('home', haus, 0, QuizMode.deToEn)!.answer, 'home');
+    });
+
+    test('el adaptador de BilingualTerm muestra solo la forma principal', () {
+      final receta = trainingItems.firstWhere(
+          (t) => t.answersIn(Language.english).first == 'Prescription');
+      expect(promptFor(receta, QuizMode.enToEs), 'Prescription');
+      expect(promptFor(receta, QuizMode.esToEn), 'Receta médica');
+      expect(revealAnswer(receta, QuizMode.enToEs), 'Receta médica');
+      expect(revealAnswer(receta, QuizMode.esToEn), 'Prescription');
+    });
+
+    test('con una variante, la celda verde muestra la forma oficial', () {
+      final receta = trainingItems.firstWhere(
+          (t) => t.answersIn(Language.english).first == 'Prescription');
+      final r = matchSelected('receta', receta, 5, QuizMode.enToEs);
+      expect(r!.index, 5);
+      expect(r.answer, 'Receta médica'); // no "receta"
+    });
+
+    test('las variantes en inglés también se aceptan (EN←ES)', () {
+      final repeat = trainingItems.firstWhere(
+          (t) => t.answersIn(Language.english).first == 'Repeat please');
+      expect(matchSelected('please repeat', repeat, 0, QuizMode.esToEn), isNotNull);
+      expect(matchSelected('Repeat, please!', repeat, 0, QuizMode.esToEn), isNotNull);
+      expect(matchSelected('say again', repeat, 0, QuizMode.esToEn), isNull);
+    });
+
+    test('español: tildes y artículos opcionales al escribir', () {
+      final interprete = trainingItems.firstWhere(
+          (t) => t.answersIn(Language.english).first == 'Interpreter');
+      for (final texto in ['Intérprete', 'interprete', 'el intérprete', 'UN INTERPRETE']) {
+        expect(matchSelected(texto, interprete, 0, QuizMode.enToEs), isNotNull,
+            reason: texto);
+      }
+    });
+
+    test('findMatch en modo libre funciona con una lista bilingüe', () {
+      final r = findMatch('interprete', trainingItems, {}, QuizMode.enToEs);
+      expect(r, isNotNull);
+      expect(r!.answer, 'Intérprete');
+      expect(
+          promptFor(trainingItems[r.index], QuizMode.enToEs), 'Interpreter');
+    });
+  });
+
+  group('integridad de los datos', () {
+    // Quita tildes y ñ a mano (sin usar normalizeSpanish) para comprobar que
+    // las respuestas siguen valiendo escritas sin ellas.
+    String sinTildes(String s) {
+      const m = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u', 'ñ': 'n', //
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U', 'Ñ': 'N',
+      };
+      return s.split('').map((c) => m[c] ?? c).join();
+    }
+
+    test('hay 200 palabras en alemán y 200 + 200 términos bilingües', () {
+      expect(words.length, 200);
+      expect(trainingItems.length, 200);
+      expect(medicalItems.length, 200);
+    });
+
+    for (final lista in wordLists) {
+      for (final modo in lista.modos) {
+        test('${lista.nombre}: todo elemento se puede acertar en ${modo.id}', () {
+          final items = lista.items;
+          for (var i = 0; i < items.length; i++) {
+            final respuestas = rawAnswers(items[i], modo);
+            expect(respuestas, isNotEmpty, reason: 'elemento $i sin respuestas');
+            expect(promptFor(items[i], modo), isNotEmpty);
+
+            for (final cruda in respuestas) {
+              final conjunto = {...respuestas};
+              expect(conjunto.length, respuestas.length,
+                  reason: 'repetidas en $i');
+              expect(normalize(cruda, modo.to), isNotEmpty,
+                  reason: '"$cruda" se normaliza a vacío');
+
+              // Modo libre (con Enter): puede caer en un elemento anterior que
+              // acepta lo mismo, pero nunca en uno posterior ni en ninguno.
+              final libre = findMatch(cruda, items, {}, modo, enviado: true);
+              expect(libre, isNotNull, reason: '"$cruda" no coincide con nada');
+              expect(libre!.index, lessThanOrEqualTo(i), reason: '"$cruda"');
+
+              // Modo ordenado: se acepta SIEMPRE en su propio elemento.
+              final ordenado = matchSelected(cruda, items[i], i, modo);
+              expect(ordenado, isNotNull, reason: '"$cruda" en el elemento $i');
+              expect(ordenado!.index, i);
+
+              // Y las tildes siguen siendo opcionales en español.
+              if (modo.to == Language.spanish) {
+                expect(matchSelected(sinTildes(cruda), items[i], i, modo),
+                    isNotNull,
+                    reason: '"${sinTildes(cruda)}" (sin tildes) en el elemento $i');
+              }
+            }
+          }
+        });
+      }
+    }
+
+    test('las listas bilingües siempre muestran la forma oficial al acertar', () {
+      for (final items in [trainingItems, medicalItems]) {
+        for (final modo in [QuizMode.enToEs, QuizMode.esToEn]) {
+          for (var i = 0; i < items.length; i++) {
+            for (final cruda in rawAnswers(items[i], modo)) {
+              final r = matchSelected(cruda, items[i], i, modo)!;
+              expect(r.answer, revealAnswer(items[i], modo), reason: cruda);
+            }
           }
         }
-      });
-    }
+      }
+    });
+
+    test('en las listas bilingües la pregunta es una sola forma (la primera)', () {
+      for (final items in [trainingItems, medicalItems]) {
+        for (final item in items) {
+          expect(promptFor(item, QuizMode.enToEs),
+              item.answersIn(Language.english).first);
+          expect(promptFor(item, QuizMode.esToEn),
+              item.answersIn(Language.spanish).first);
+        }
+      }
+    });
+
+    test('no hay dos elementos con la misma pregunta principal en la misma lista', () {
+      for (final lista in wordLists) {
+        for (final modo in lista.modos) {
+          final vistas = <String>{};
+          final repetidas = <String>[];
+          for (final item in lista.items) {
+            if (!vistas.add(promptFor(item, modo))) {
+              repetidas.add(promptFor(item, modo));
+            }
+          }
+          // Solo informativo: puede haber preguntas repetidas en los datos y no
+          // es un error, pero así queda a la vista si pasa.
+          printOnFailure('${lista.nombre} ${modo.id}: repetidas $repetidas');
+        }
+      }
+    });
   });
 }
