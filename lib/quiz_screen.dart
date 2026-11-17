@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'quiz_logic.dart';
-import 'word_lists.dart';
+import 'words.dart';
 
 /// StatefulWidget: una pantalla que CAMBIA mientras juegas (palabras
 /// acertadas, mensajes...). Flutter separa el widget (inmutable) de su
@@ -39,10 +39,9 @@ class _QuizScreenState extends State<QuizScreen> {
   // sola hasta la palabra seleccionada.
   final ScrollController _scroll = ScrollController();
 
-  /// Alto de cada fila de la cuadrícula (celda + 2 de margen arriba y abajo).
-  /// Depende de la lista elegida, pero dentro de una lista es FIJO, y por eso
-  /// podemos calcular dónde está cada fila.
-  double get _altoFila => _catalogo.altoFila;
+  /// Alto de cada fila de la cuadrícula (36 de celda + 2 de margen arriba y
+  /// abajo). Es FIJO, y por eso podemos calcular dónde está cada fila.
+  static const double _altoFila = 40;
 
   /// Margen interior de la lista (arriba y abajo).
   static const double _margenLista = 8;
@@ -50,12 +49,8 @@ class _QuizScreenState extends State<QuizScreen> {
   // ---- TODO EL ESTADO DEL JUEGO está en estas variables. ----
   // _reiniciar() las restaura todas; por eso reiniciar funciona siempre.
 
-  /// La lista elegida (Alemán, Glosario de entrenamiento o Médico ampliado).
-  WordList _catalogo = wordLists.first;
-
-  /// Dirección de juego actual: qué idioma se ve y cuál se escribe.
-  /// Siempre es una de las dos direcciones de [_catalogo].
-  QuizMode _modo = wordLists.first.forward;
+  /// Modo de idioma actual (DE → EN o EN → DE).
+  QuizMode _modo = QuizMode.deToEn;
 
   /// true = modo ORDENADO (hay una palabra seleccionada y solo se acepta
   /// esa). false = modo LIBRE (se acepta cualquier palabra pendiente).
@@ -64,14 +59,11 @@ class _QuizScreenState extends State<QuizScreen> {
   /// true = el interruptor "Mezclar orden" está activado.
   bool _mezclar = false;
 
-  /// Los elementos en el orden en que se muestran en la cuadrícula.
-  /// Normalmente son los de la lista elegida tal cual; con "Mezclar orden" es
-  /// una copia en orden aleatorio. A PARTIR DE AQUÍ, todo índice (selección,
-  /// acertadas) es una POSICIÓN en esta lista, no en la lista original.
-  List<QuizItem> _lista = wordLists.first.items;
-
-  /// Cuántos elementos tiene la lista elegida (siempre 200 por ahora).
-  int get _total => _catalogo.items.length;
+  /// Las palabras en el orden en que se muestran en la cuadrícula. Normalmente
+  /// es `words` tal cual; con "Mezclar orden" es una copia en orden aleatorio.
+  /// A PARTIR DE AQUÍ, todo índice (selección, acertadas) es una POSICIÓN en
+  /// esta lista, no una posición en `words`.
+  List<Word> _lista = words;
 
   /// Generador de números aleatorios (el de los tests o uno real).
   late final Random _random = widget.random ?? Random();
@@ -90,9 +82,9 @@ class _QuizScreenState extends State<QuizScreen> {
   String _mensaje = '';
   bool _mensajeEsError = false;
 
-  /// ¿Completó todos? Se calcula a partir de las acertadas, no se guarda
+  /// ¿Completó las 200? Se calcula a partir de las acertadas, no se guarda
   /// aparte, así nunca se puede desincronizar.
-  bool get _ganado => _acertadas.length == _total;
+  bool get _ganado => _acertadas.length == words.length;
 
   /// El campo solo se puede usar mientras el juego sigue en marcha.
   bool get _campoActivo => !_rendido && !_ganado;
@@ -148,8 +140,8 @@ class _QuizScreenState extends State<QuizScreen> {
     if (actual == null) return;
     final pendientes = _acertadas.keys.toSet();
     _seleccionar(adelante
-        ? nextPending(actual, pendientes, _total)
-        : previousPending(actual, pendientes, _total));
+        ? nextPending(actual, pendientes, words.length)
+        : previousPending(actual, pendientes, words.length));
   }
 
   /// Selecciona una palabra: vacía el campo, devuelve el foco y desplaza la
@@ -168,8 +160,7 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   /// Número de columnas según el ancho (misma regla que usa la cuadrícula).
-  /// Cada lista tiene sus propios cortes (las frases largas necesitan más ancho).
-  int _columnasPara(double ancho) => _catalogo.columnasPara(ancho);
+  int _columnasPara(double ancho) => ancho >= 1000 ? 4 : (ancho >= 600 ? 2 : 1);
 
   /// Desplaza la lista SOLO si la fila seleccionada no está a la vista.
   /// No usamos Scrollable.ensureVisible porque ListView.builder no crea las
@@ -181,7 +172,7 @@ class _QuizScreenState extends State<QuizScreen> {
       if (!mounted || sel == null || !_scroll.hasClients) return;
 
       final columnas = _columnasPara(MediaQuery.sizeOf(context).width);
-      final fila = sel % gridRows(_total, columnas);
+      final fila = sel % gridRows(words.length, columnas);
       final arriba = _margenLista + fila * _altoFila;
       final abajo = arriba + _altoFila;
       final pos = _scroll.position;
@@ -239,10 +230,10 @@ class _QuizScreenState extends State<QuizScreen> {
       // En modo ordenado la selección salta sola a la siguiente PENDIENTE
       // (null si ya no queda ninguna: ganaste).
       if (_ordenado) {
-        _seleccion = nextPending(r.index, _acertadas.keys.toSet(), _total);
+        _seleccion = nextPending(r.index, _acertadas.keys.toSet(), words.length);
       }
       _mensaje = _ganado
-          ? '🎉 ¡Felicidades! Completaste los $_total términos'
+          ? '🎉 ¡Felicidades! Completaste las ${words.length} palabras'
           : '✔ ${promptFor(_lista[r.index], _modo)} = ${r.answer}';
       _mensajeEsError = false;
     });
@@ -295,10 +286,10 @@ class _QuizScreenState extends State<QuizScreen> {
   /// No borra nada: las acertadas se quedan como están.
   void _rendirse() {
     if (_rendido || _ganado) return;
-    final faltan = _total - _acertadas.length;
+    final faltan = words.length - _acertadas.length;
     setState(() {
       _rendido = true;
-      _mensaje = 'Te rendiste: faltaron $faltan términos';
+      _mensaje = 'Te rendiste: faltaron $faltan palabras';
       _mensajeEsError = false;
     });
   }
@@ -315,28 +306,17 @@ class _QuizScreenState extends State<QuizScreen> {
       _seleccion = _ordenado ? 0 : null; // vuelve a la palabra 1
       // Orden nuevo en CADA reinicio: mezclado si el interruptor está
       // activado, o el original si no.
-      _lista = orderedWords(_catalogo.items, _mezclar ? _random : null);
+      _lista = orderedWords(words, _mezclar ? _random : null);
     });
     _controller.clear();
     _devolverFoco(); // el campo ya estará activo cuando se pida el foco
     if (_ordenado) _mostrarSeleccion(); // sube la cuadrícula al principio
   }
 
-  /// Cambiar de dirección (p. ej. DE → EN a EN → DE) = poner la nueva y reiniciar.
+  /// Cambiar de modo de idioma = poner el modo nuevo y reiniciar.
   void _cambiarModo(QuizMode nuevo) {
     if (nuevo == _modo) return;
     setState(() => _modo = nuevo);
-    _reiniciar();
-  }
-
-  /// Cambiar de lista = poner la lista nueva con su dirección "de ida" y
-  /// reiniciar. Se conservan las opciones Ordenado/Libre y Mezclar orden.
-  void _cambiarLista(WordList nueva) {
-    if (identical(nueva, _catalogo)) return;
-    setState(() {
-      _catalogo = nueva;
-      _modo = nueva.forward; // la dirección de la lista anterior ya no existe
-    });
     _reiniciar();
   }
 
@@ -371,32 +351,21 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   Widget _barraSuperior(BuildContext context) {
-    final total = _total;
+    final total = words.length;
     final aciertos = _acertadas.length;
     final porcentaje = (aciertos * 100 / total).toStringAsFixed(0);
     final tema = Theme.of(context);
 
-    // El texto de ayuda nombra el idioma que se escribe en la dirección actual.
-    final idioma = _modo.to.nombre;
-    final String pista = _ordenado
-        ? 'Escribe en $idioma la traducción del término resaltado…'
-        : 'Escribe la traducción en $idioma…';
-
-    // Selector de lista: una ficha por lista del catálogo.
-    final selectorLista = Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final lista in wordLists)
-          ChoiceChip(
-            key: Key('lista_${lista.id}'),
-            label: Text(lista.nombre),
-            selected: identical(lista, _catalogo),
-            showCheckmark: false,
-            onSelected: (_) => _cambiarLista(lista),
-          ),
-      ],
-    );
+    final String pista;
+    if (_ordenado) {
+      pista = _modo == QuizMode.deToEn
+          ? 'Escribe la traducción en inglés de la palabra resaltada…'
+          : 'Escribe en alemán la palabra resaltada…';
+    } else {
+      pista = _modo == QuizMode.deToEn
+          ? 'Escribe la traducción en inglés…'
+          : 'Escribe la palabra en alemán…';
+    }
 
     final campo = TextField(
       controller: _controller,
@@ -427,11 +396,10 @@ class _QuizScreenState extends State<QuizScreen> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        // Las dos direcciones de la lista elegida (DE→EN y EN→DE, o EN→ES y
-        // ES→EN): los idiomas salen del propio QuizMode.
-        for (final modo in _catalogo.modos)
-          _chip(modo.from.code, modo.to.code, Key('modo_${modo.id}'),
-              _modo == modo, () => _cambiarModo(modo)),
+        _chip('DE', 'EN', const Key('modo_de_en'), _modo == QuizMode.deToEn,
+            () => _cambiarModo(QuizMode.deToEn)),
+        _chip('EN', 'DE', const Key('modo_en_de'), _modo == QuizMode.enToDe,
+            () => _cambiarModo(QuizMode.enToDe)),
         const SizedBox(width: 4),
         ChoiceChip(
           key: const Key('orden_ordenado'),
@@ -509,7 +477,7 @@ class _QuizScreenState extends State<QuizScreen> {
               // Fila 1: título y contador.
               Row(
                 children: [
-                  Text('Vocab Quiz', style: tema.textTheme.titleLarge),
+                  Text('Deutsch Quiz', style: tema.textTheme.titleLarge),
                   const Spacer(),
                   Text(
                     '$aciertos/$total  ($porcentaje%)',
@@ -519,11 +487,7 @@ class _QuizScreenState extends State<QuizScreen> {
                 ],
               ),
               const SizedBox(height: 8),
-              selectorLista, // Fila 2: qué lista practicar
-              const SizedBox(height: 8),
               campo, // el único campo de texto
-              const SizedBox(height: 8),
-              // Dirección, Ordenado/Libre, mezcla, navegación y botones.
               const SizedBox(height: 8),
               controles,
               const SizedBox(height: 6),
@@ -580,7 +544,7 @@ class _QuizScreenState extends State<QuizScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final columnas = _columnasPara(constraints.maxWidth);
-        final filas = gridRows(_total, columnas);
+        final filas = gridRows(words.length, columnas);
 
         // ListView.builder solo construye las filas visibles (rápido).
         // Cada fila es un Row con una celda por columna; el índice de la
@@ -601,7 +565,7 @@ class _QuizScreenState extends State<QuizScreen> {
                       fila: fila,
                       columna: c,
                       columnas: columnas,
-                      total: _total,
+                      total: words.length,
                     )),
                   ),
               ],
@@ -614,7 +578,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
   /// Un par de celdas: pregunta (oscura) | respuesta (amarilla, verde o roja).
   Widget _fila(int? indice) {
-    if (indice == null) return SizedBox(height: _altoFila); // celda vacía
+    if (indice == null) return const SizedBox(height: _altoFila); // vacía
     final acertada = _acertadas.containsKey(indice);
     final seleccionada = _ordenado && _campoActivo && _seleccion == indice;
     final clicable = _ordenado && _campoActivo && !acertada;
@@ -686,9 +650,7 @@ class _QuizScreenState extends State<QuizScreen> {
     );
   }
 
-  /// Una celda de color con texto. Los términos pueden ser frases largas
-  /// ("Limited English proficiency"), así que se permiten 2 líneas y solo se
-  /// recorta con "…" si ni así caben.
+  /// Una celda de color con texto (recortado con "…" si no cabe).
   Widget _celda(String contenido,
       {required Color fondo, required Color colorTexto, bool negrita = false}) {
     return Container(
@@ -700,12 +662,11 @@ class _QuizScreenState extends State<QuizScreen> {
       ),
       child: Text(
         contenido,
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: colorTexto,
-          fontSize: 13,
-          height: 1.15,
+          fontSize: 14,
           fontWeight: negrita ? FontWeight.bold : FontWeight.normal,
         ),
       ),

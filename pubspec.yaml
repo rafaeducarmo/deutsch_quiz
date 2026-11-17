@@ -1,5 +1,5 @@
 name: deutsch_quiz
-description: "Vocab Quiz: practica vocabulario en alemán, inglés y español al estilo Sporcle."
+description: "Deutsch Quiz: aprende 200 palabras en alemán al estilo Sporcle."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

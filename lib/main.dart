@@ -1,5 +1,4 @@
-// Punto de entrada de la app (Vocab Quiz): arranca Flutter y muestra la
-// pantalla del quiz.
+// Punto de entrada de la app: arranca Flutter y muestra la pantalla del quiz.
 
 import 'dart:math';
 
@@ -20,7 +19,7 @@ class DeutschQuizApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Vocab Quiz',
+      title: 'Deutsch Quiz',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),

@@ -1,11 +1,11 @@
 {
-    "name": "Vocab Quiz",
-    "short_name": "Vocab Quiz",
+    "name": "deutsch_quiz",
+    "short_name": "deutsch_quiz",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "Vocab Quiz: practica vocabulario en alemán, inglés y español al estilo Sporcle.",
+    "description": "A new Flutter project.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

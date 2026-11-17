@@ -8,7 +8,6 @@ import 'package:material_ui/material_ui.dart';
 
 import 'package:deutsch_quiz/main.dart';
 import 'package:deutsch_quiz/quiz_logic.dart';
-import 'package:deutsch_quiz/word_lists.dart';
 import 'package:deutsch_quiz/words.dart';
 
 /// Simula presionar Enter en el campo de texto.
@@ -697,14 +696,13 @@ void main() {
       await tocar(tester, const Key('mezclar'));
 
       final primera = words[o1[0]];
-      await expectSeleccion(
-          tester, promptFor(germanItems[o1[0]], QuizMode.enToDe));
+      await expectSeleccion(tester, promptFor(primera, QuizMode.enToDe));
 
       await tester.enterText(find.byType(TextField), primera.german);
       await tester.pump();
       expect(find.textContaining('1/200'), findsOneWidget);
       await expectSeleccion(
-          tester, promptFor(germanItems[o1[1]], QuizMode.enToDe));
+          tester, promptFor(words[o1[1]], QuizMode.enToDe));
     });
 
     testWidgets('libre con mezcla: cualquier palabra se acepta y no hay resaltado',
@@ -751,7 +749,7 @@ void main() {
       await tester.pump();
       expect(find.textContaining('1/200'), findsOneWidget);
       expect(find.text('✔ dog = der Hund'), findsOneWidget);
-      expect(find.text(promptFor(germanItems[o1[0]], QuizMode.enToDe)), findsOneWidget);
+      expect(find.text(promptFor(words[o1[0]], QuizMode.enToDe)), findsOneWidget);
     });
 
     testWidgets('cambiar entre Ordenado y Libre conserva el interruptor activado',
@@ -766,215 +764,6 @@ void main() {
       expect(tester.widget<FilterChip>(find.byKey(const Key('mezclar'))).selected,
           isTrue);
       expect(find.textContaining('0/200'), findsOneWidget);
-    });
-  });
-
-  // ============================== LISTAS ==============================
-
-  group('selector de lista', () {
-    final glosario = trainingItems;
-    final medico = medicalItems;
-
-    String pregunta(QuizItem item, QuizMode modo) => promptFor(item, modo);
-
-    testWidgets('el título es general y hay tres listas', (tester) async {
-      await abrir(tester);
-      expect(find.text('Vocab Quiz'), findsOneWidget);
-      expect(find.text('Deutsch Quiz'), findsNothing);
-      expect(find.text('Alemán'), findsOneWidget);
-      expect(find.text('Glosario de entrenamiento'), findsOneWidget);
-      expect(find.text('Médico ampliado'), findsOneWidget);
-    });
-
-    testWidgets('arranca en Alemán con las direcciones DE→EN y EN→DE',
-        (tester) async {
-      await abrir(tester);
-      expect(find.byKey(const Key('modo_de_en')), findsOneWidget);
-      expect(find.byKey(const Key('modo_en_de')), findsOneWidget);
-      expect(find.byKey(const Key('modo_en_es')), findsNothing);
-      expect(find.byKey(const Key('modo_es_en')), findsNothing);
-      await expectSeleccion(tester, 'der Mann');
-    });
-
-    testWidgets('elegir un glosario muestra EN→ES y ES→EN y reinicia',
-        (tester) async {
-      await abrir(tester);
-      await tester.enterText(find.byType(TextField), 'man');
-      await tester.pump();
-      expect(find.textContaining('1/200'), findsOneWidget);
-
-      await tocar(tester, const Key('lista_glosario'));
-
-      expect(find.byKey(const Key('modo_en_es')), findsOneWidget);
-      expect(find.byKey(const Key('modo_es_en')), findsOneWidget);
-      expect(find.byKey(const Key('modo_de_en')), findsNothing);
-      expect(find.byKey(const Key('modo_en_de')), findsNothing);
-      expect(find.textContaining('0/200'), findsOneWidget);
-      expect(campoTieneFoco(tester), isTrue);
-      // Empieza en la dirección "de ida" (EN→ES): se ve el inglés.
-      await expectSeleccion(tester, pregunta(glosario[0], QuizMode.enToEs));
-      expect(find.text('Interpreter'), findsOneWidget);
-      expect(find.text('der Mann'), findsNothing);
-    });
-
-    testWidgets('el glosario ordenado acepta tildes opcionales y salta al siguiente',
-        (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_glosario'));
-
-      await tester.enterText(find.byType(TextField), 'interprete'); // sin tilde
-      await tester.pump();
-
-      expect(find.textContaining('1/200'), findsOneWidget);
-      expect(find.text('Intérprete'), findsOneWidget); // celda verde oficial
-      expect(find.text('✔ Interpreter = Intérprete'), findsOneWidget);
-      expect(textoDelCampo(tester), '');
-      expect(campoTieneFoco(tester), isTrue);
-      await expectSeleccion(tester, pregunta(glosario[1], QuizMode.enToEs));
-    });
-
-    testWidgets('solo acepta el término seleccionado (glosario)', (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_glosario'));
-
-      // "Intérprete" es del primero; el segundo se llama "Interpretación consecutiva".
-      await tester.enterText(find.byType(TextField), 'interpretacion consecutiva');
-      await tester.pump();
-      expect(find.textContaining('0/200'), findsOneWidget);
-      await expectSeleccion(tester, pregunta(glosario[0], QuizMode.enToEs));
-    });
-
-    testWidgets('ES→EN: se ve el español y se escribe el inglés', (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_glosario'));
-      await tocar(tester, const Key('modo_es_en'));
-
-      await expectSeleccion(tester, 'Intérprete');
-      expect(find.text('Interpreter'), findsNothing);
-
-      await tester.enterText(find.byType(TextField), 'INTERPRETER');
-      await tester.pump();
-      expect(find.textContaining('1/200'), findsOneWidget);
-      expect(find.text('✔ Intérprete = Interpreter'), findsOneWidget);
-      await expectSeleccion(
-          tester, pregunta(glosario[1], QuizMode.esToEn));
-    });
-
-    testWidgets('libre: una variante se acepta y se muestra la forma oficial',
-        (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_glosario'));
-      await tocar(tester, const Key('orden_libre'));
-      expect(find.byKey(const Key('seleccion')), findsNothing);
-
-      // "Clarify" = "Aclarar" / "aclaración" (variante).
-      await tester.enterText(find.byType(TextField), 'aclaracion');
-      await tester.pump();
-
-      expect(find.textContaining('1/200'), findsOneWidget);
-      expect(find.text('Aclarar'), findsOneWidget);
-      expect(find.text('✔ Clarify = Aclarar'), findsOneWidget);
-      expect(campoTieneFoco(tester), isTrue);
-    });
-
-    testWidgets('Siguiente y Anterior funcionan en el glosario', (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_glosario'));
-
-      await tocar(tester, const Key('btn_siguiente'));
-      await expectSeleccion(tester, pregunta(glosario[1], QuizMode.enToEs));
-      await tocar(tester, const Key('btn_anterior'));
-      await tocar(tester, const Key('btn_anterior')); // circular: la última
-      await expectSeleccion(tester, pregunta(glosario[199], QuizMode.enToEs));
-    });
-
-    testWidgets('Me rindo muestra en rojo la forma oficial (médico ampliado)',
-        (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_medico'));
-      await tester.tap(find.text('Me rindo'));
-      await tester.pump();
-
-      expect(campoActivo(tester), isFalse);
-      final oficial = revealAnswer(medico[0], QuizMode.enToEs);
-      final roja = tester.widget<Text>(find.text(oficial));
-      expect(roja.style!.color, Colors.red.shade800);
-    });
-
-    testWidgets('Reiniciar después de rendirse en una lista bilingüe',
-        (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_medico'));
-      await tester.tap(find.text('Me rindo'));
-      await tester.pump();
-      await tester.tap(find.text('Reiniciar'));
-      await tester.pump();
-      await tester.pump();
-
-      expect(campoActivo(tester), isTrue);
-      expect(campoTieneFoco(tester), isTrue);
-      expect(find.textContaining('0/200'), findsOneWidget);
-      await expectSeleccion(tester, pregunta(medico[0], QuizMode.enToEs));
-    });
-
-    testWidgets('completar los 200 del glosario muestra la felicitación',
-        (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_glosario'));
-      for (final item in glosario) {
-        await tester.enterText(
-            find.byType(TextField), item.answersIn(Language.spanish).first);
-      }
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('200/200'), findsOneWidget);
-      expect(find.textContaining('Felicidades'), findsOneWidget);
-      expect(campoActivo(tester), isFalse);
-    });
-
-    testWidgets('cambiar de lista y volver a Alemán restaura todo', (tester) async {
-      await abrir(tester);
-      await tocar(tester, const Key('lista_medico'));
-      await tocar(tester, const Key('lista_aleman'));
-
-      expect(find.byKey(const Key('modo_de_en')), findsOneWidget);
-      expect(find.byKey(const Key('modo_en_es')), findsNothing);
-      expect(find.textContaining('0/200'), findsOneWidget);
-      expect(campoTieneFoco(tester), isTrue);
-      await expectSeleccion(tester, 'der Mann');
-
-      await tester.enterText(find.byType(TextField), 'man');
-      await tester.pump();
-      expect(find.textContaining('1/200'), findsOneWidget);
-    });
-
-    testWidgets('al cambiar de lista se conservan Libre y Mezclar',
-        (tester) async {
-      await abrir(tester, azar: Random(42));
-      await tocar(tester, const Key('orden_libre'));
-      await tocar(tester, const Key('mezclar'));
-
-      await tocar(tester, const Key('lista_glosario'));
-
-      expect(tester.widget<FilterChip>(find.byKey(const Key('mezclar'))).selected,
-          isTrue);
-      expect(find.byKey(const Key('btn_siguiente')), findsNothing); // sigue Libre
-      expect(find.byKey(const Key('seleccion')), findsNothing);
-    });
-
-    testWidgets('mezclar funciona en el glosario (ordenado)', (tester) async {
-      final azar = Random(42);
-      final o1 = shuffledOrder(200, azar);
-      await abrir(tester, azar: Random(42));
-      await tocar(tester, const Key('lista_glosario'));
-      await tocar(tester, const Key('mezclar'));
-
-      await expectSeleccion(tester, pregunta(glosario[o1[0]], QuizMode.enToEs));
-      await tester.enterText(find.byType(TextField),
-          glosario[o1[0]].answersIn(Language.spanish).first);
-      await tester.pump();
-      expect(find.textContaining('1/200'), findsOneWidget);
-      await expectSeleccion(tester, pregunta(glosario[o1[1]], QuizMode.enToEs));
     });
   });
 
